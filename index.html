@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proton Lean OS v2.4 - AI Operations Platform</title>
+    <title>Proton Lean OS v2.5 - AI Operations Platform</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Icons CDN -->
@@ -15,13 +15,13 @@
                 extend: {
                     colors: {
                         graphite: {
-                            950: '#141820',
-                            900: '#1c222d',
-                            850: '#252d3d',
-                            800: '#2e374a',
-                            750: '#384359',
-                            700: '#46536c',
-                            600: '#5c6b87',
+                            950: '#10141c',
+                            900: '#181f2a',
+                            850: '#222b3a',
+                            800: '#2c374a',
+                            750: '#38465e',
+                            700: '#485876',
+                            600: '#5c6e91',
                         },
                         gold: {
                             300: '#fef08a',
@@ -38,31 +38,33 @@
     </script>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body class="bg-graphite-900 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-gold-500/30 selection:text-gold-300">
+<body class="bg-graphite-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-gold-500/30 selection:text-gold-300">
 
     <!-- Kontener na dynamiczne powiadomienia TOAST -->
     <div id="toast-container" class="fixed top-24 right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-md w-full"></div>
 
-    <!-- PULL-NOTIFICATION DRAWER (Szuflada Kolejki Zdarzeń MES) -->
-    <aside id="notification-drawer" class="fixed inset-y-0 right-0 z-50 w-full sm:w-[480px] bg-graphite-850 border-l-2 border-gold-500/50 shadow-2xl transform translate-x-full transition-transform duration-300 flex flex-col">
-        <div class="p-5 bg-graphite-900 border-b-2 border-graphite-750 flex items-center justify-between">
+    <!-- PULL-NOTIFICATION DRAWER (Szuflada Kolejki Zdarzeń MES z obsługą localStorage) -->
+    <aside id="notification-drawer" class="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] bg-graphite-900 border-l-2 border-gold-500/50 shadow-2xl transform translate-x-full transition-transform duration-300 flex flex-col">
+        <div class="p-5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-bold">
-                    <i data-lucide="inbox" class="w-5 h-5"></i>
+                <div class="w-11 h-11 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-bold border border-gold-400/40">
+                    <i data-lucide="inbox" class="w-6 h-6"></i>
                 </div>
                 <div>
-                    <h3 class="text-sm font-bold text-white uppercase tracking-wider">Kolejka Zdarzeń Shop-Floor</h3>
-                    <p class="text-xs text-slate-300 font-mono-numbers">Protokół Push-Pull: Oczekujące meldunki</p>
+                    <h3 class="text-sm font-extrabold text-white uppercase tracking-wider">Kolejka Zdarzeń Shop-Floor</h3>
+                    <p class="text-xs text-slate-300 font-mono-numbers">Trwały bufor zdarzeń (localStorage)</p>
                 </div>
             </div>
-            <button onclick="toggleNotificationDrawer()" class="p-2 rounded-xl bg-graphite-800 hover:bg-graphite-750 text-slate-300 hover:text-white transition">
+            <button onclick="toggleNotificationDrawer()" class="p-2.5 rounded-xl bg-graphite-850 hover:bg-graphite-800 text-slate-300 hover:text-white transition">
                 <i data-lucide="x" class="w-5 h-5"></i>
             </button>
         </div>
 
-        <div class="p-4 bg-graphite-900/60 border-b border-graphite-750 flex items-center justify-between text-xs">
-            <span class="text-slate-300">Zdarzenia w buforze: <strong id="drawer-count-badge" class="text-gold-400 font-mono-numbers">0</strong></span>
-            <button onclick="clearEventBuffer()" class="text-xs text-rose-400 hover:text-rose-300 font-medium">Wyczyść bufor</button>
+        <div class="p-4 bg-graphite-900/90 border-b border-graphite-750 flex items-center justify-between text-xs font-semibold">
+            <span class="text-slate-300">Zdarzenia w rejestrze: <strong id="drawer-count-badge" class="text-gold-400 font-mono-numbers font-bold">0</strong></span>
+            <button onclick="clearEventBuffer()" class="text-xs text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Wyczyść bufor
+            </button>
         </div>
 
         <!-- Lista zdarzeń w szufladzie -->
@@ -73,14 +75,14 @@
             </div>
         </div>
 
-        <div class="p-4 bg-graphite-900 border-t border-graphite-750 text-xs text-slate-400 flex items-center justify-between">
+        <div class="p-4 bg-graphite-950 border-t border-graphite-750 text-xs text-slate-400 flex items-center justify-between">
             <span>Inżynier decyduje o pobraniu usterki do 5-Why</span>
-            <span class="font-mono-numbers text-gold-400 font-bold">Standard Human-in-the-Loop</span>
+            <span class="font-mono-numbers text-gold-400 font-bold">Zasada Push-Pull</span>
         </div>
     </aside>
 
-    <!-- Top Navigation Bar (Poszerzony kontener, rozsunięte przyciski) -->
-    <header class="bg-graphite-850 border-b-2 border-gold-500/40 sticky top-0 z-40 shadow-xl backdrop-blur-md">
+    <!-- Top Navigation Bar -->
+    <header class="bg-graphite-900 border-b-2 border-gold-500/40 sticky top-0 z-40 shadow-xl backdrop-blur-md">
         <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
             
             <!-- Logo & Brand -->
@@ -91,34 +93,33 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <span class="font-extrabold text-xl tracking-wider text-white">PROTON<span class="text-gold-400">LEAN</span></span>
-                        <span class="text-xs font-mono-numbers font-bold bg-gold-500/20 text-gold-300 border border-gold-400/50 px-2 py-0.5 rounded-md">v2.4 PRO</span>
+                        <span class="text-xs font-mono-numbers font-bold bg-gold-500/20 text-gold-300 border border-gold-400/50 px-2 py-0.5 rounded-md">v2.5 PRO</span>
                     </div>
                     <p class="text-xs text-slate-300 font-medium tracking-tight">Heavy Fabrication & Assembly Management OS</p>
                 </div>
             </div>
 
-            <!-- Navigation Tabs (Rozsunięte i przestronne) -->
-            <nav class="hidden lg:flex items-center gap-3 bg-graphite-900/90 p-2 rounded-2xl border border-graphite-750 shadow-inner">
+            <!-- Navigation Tabs -->
+            <nav class="hidden lg:flex items-center gap-3 bg-graphite-950/90 p-2 rounded-2xl border border-graphite-750 shadow-inner">
                 <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 shadow-md transition">
                     <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Kokpit Główny
                 </button>
-                <button onclick="switchTab('capa')" id="nav-capa" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition">
+                <button onclick="switchTab('capa')" id="nav-capa" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
                     <i data-lucide="shield-alert" class="w-4 h-4 text-gold-400"></i> Sztab 5-Why (CAPA)
                 </button>
-                <button onclick="switchTab('audit5s')" id="nav-audit5s" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition">
+                <button onclick="switchTab('audit5s')" id="nav-audit5s" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
                     <i data-lucide="scan" class="w-4 h-4 text-gold-400"></i> Audyt Wizualny 5S
                 </button>
-                <button onclick="switchTab('whatif')" id="nav-whatif" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition">
+                <button onclick="switchTab('whatif')" id="nav-whatif" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
                     <i data-lucide="sliders" class="w-4 h-4 text-gold-400"></i> Symulator What-If
                 </button>
             </nav>
 
             <!-- Actions: Dzwonek Push-Pull + Terminal + Status AI -->
             <div class="flex items-center gap-3 flex-shrink-0">
-                <!-- Przycisk Dzwonka Powiadomień (Push-Pull Queue) -->
-                <button onclick="toggleNotificationDrawer()" id="btn-notification-bell" class="relative p-2.5 rounded-xl bg-graphite-900 hover:bg-graphite-800 border-2 border-graphite-750 text-slate-200 hover:text-gold-400 transition shadow-sm">
+                <button onclick="toggleNotificationDrawer()" id="btn-notification-bell" class="relative p-2.5 rounded-xl bg-graphite-950 hover:bg-graphite-850 border-2 border-graphite-750 text-slate-200 hover:text-gold-400 transition shadow-sm">
                     <i data-lucide="bell" class="w-5 h-5"></i>
-                    <span id="bell-counter-badge" class="hidden absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-mono-numbers text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center border-2 border-graphite-850 animate-bounce">0</span>
+                    <span id="bell-counter-badge" class="hidden absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-mono-numbers text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center border-2 border-graphite-900 animate-bounce">0</span>
                 </button>
 
                 <a href="terminal.html" target="_blank" class="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gold-500/10 hover:bg-gold-500/20 border-2 border-gold-400/80 text-gold-300 text-xs font-extrabold transition shadow-sm">
@@ -133,27 +134,27 @@
         </div>
     </header>
 
-    <!-- TAB 1: KOKPIT GŁÓWNY (Poszerzony do 1600px) -->
+    <!-- TAB 1: KOKPIT GŁÓWNY -->
     <main id="tab-dashboard" class="tab-content flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-        <!-- Controls: Zmiany + Zakres czasu + Filtry -->
-        <div class="bg-graphite-850 border border-graphite-700 p-5 rounded-2xl shadow-xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5">
+        <!-- Controls: Zmiany + Filtry -->
+        <div class="bg-graphite-900 border border-graphite-750 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
             <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-                <span class="text-xs font-bold uppercase tracking-wider text-gold-400 flex items-center gap-2">
+                <span class="text-xs font-extrabold uppercase tracking-wider text-gold-400 flex items-center gap-2">
                     <i data-lucide="sun-medium" class="w-4 h-4"></i> Zmiana Robocza:
                 </span>
-                <div class="inline-flex p-1.5 bg-graphite-900 rounded-xl border border-graphite-700 gap-1.5">
+                <div class="inline-flex p-1.5 bg-graphite-950 rounded-xl border border-graphite-750 gap-1.5">
                     <button onclick="setShift(1)" id="shift-btn-1" class="shift-btn px-4 py-2 rounded-lg text-xs font-extrabold bg-gold-500 text-graphite-950 font-mono-numbers shadow transition">I (06-14)</button>
-                    <button onclick="setShift(2)" id="shift-btn-2" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition">II (14-22)</button>
-                    <button onclick="setShift(3)" id="shift-btn-3" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition">III (22-06)</button>
-                    <button onclick="setShift('all')" id="shift-btn-all" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition">Pełna Doba</button>
+                    <button onclick="setShift(2)" id="shift-btn-2" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 font-mono-numbers transition">II (14-22)</button>
+                    <button onclick="setShift(3)" id="shift-btn-3" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 font-mono-numbers transition">III (22-06)</button>
+                    <button onclick="setShift('all')" id="shift-btn-all" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 font-mono-numbers transition">Pełna Doba</button>
                 </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex items-center gap-2">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Okres:</span>
-                    <select id="period-select" onchange="renderMachines()" class="bg-graphite-900 border border-graphite-700 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
+                    <select id="period-select" onchange="renderMachines()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
                         <option value="today">Dziś (Bieżąca zmiana)</option>
                         <option value="yesterday">Wczoraj (Bilans 24h)</option>
                         <option value="wtd" selected>Bieżący tydzień (W-T-D)</option>
@@ -162,7 +163,7 @@
                     </select>
                 </div>
 
-                <div class="flex items-center gap-2 bg-graphite-900 border border-graphite-700 px-3.5 py-2 rounded-xl text-xs font-mono-numbers font-semibold">
+                <div class="flex items-center gap-2 bg-graphite-950 border border-graphite-750 px-3.5 py-2 rounded-xl text-xs font-mono-numbers font-semibold">
                     <i data-lucide="calendar" class="w-4 h-4 text-gold-400"></i>
                     <input type="date" value="2026-10-26" class="bg-transparent text-slate-200 focus:outline-none text-xs font-bold">
                     <span class="text-gold-500 font-bold">-</span>
@@ -171,11 +172,160 @@
             </div>
         </div>
 
-        <!-- Realizacja Planu & Wąskie Gardło z Wykresami Pierścieniowymi -->
+        <!-- ========================================================================= -->
+        <!-- SEKCJA WYKRESÓW PIERŚCIENIOWYCH NA SAMEJ GÓRZE (PARETO STRAT + OEE) -->
+        <!-- ========================================================================= -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- WYKRES KOŁOWY 1: Pareto Przyczyn Przestojów -->
+            <div class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center pb-4 border-b border-graphite-750">
+                        <div class="flex items-center gap-3">
+                            <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="pie-chart" class="w-5 h-5"></i></span>
+                            <div>
+                                <h3 class="text-sm sm:text-base font-extrabold text-white">Struktura Pareto Przestojów (Udział w Stratach Czasu)</h3>
+                                <p class="text-xs text-slate-400">Klasyfikacja przyczyn strat ciągłego przepływu</p>
+                            </div>
+                        </div>
+                        <span id="pareto-total-time" class="text-xs font-mono-numbers font-extrabold text-gold-400 bg-gold-500/10 border border-gold-400/40 px-3 py-1.5 rounded-lg">
+                            Suma: 148 min strat
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
+                        <!-- Wykres Donut SVG -->
+                        <div class="md:col-span-5 flex flex-col items-center justify-center">
+                            <div class="relative w-40 h-40">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                    <circle cx="50" cy="50" r="38" stroke="#f43f5e" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="0" fill="transparent"/>
+                                    <circle cx="50" cy="50" r="38" stroke="#f59e0b" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="82.3" fill="transparent"/>
+                                    <circle cx="50" cy="50" r="38" stroke="#eab308" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="143.7" fill="transparent"/>
+                                    <circle cx="50" cy="50" r="38" stroke="#64748b" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="187.1" fill="transparent"/>
+                                    <circle cx="50" cy="50" r="38" stroke="#334155" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="217.7" fill="transparent"/>
+                                </svg>
+                                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span id="donut-pareto-minutes" class="text-xl font-extrabold font-mono-numbers text-white">148</span>
+                                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Minut Łącznie</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Legenda Pareto -->
+                        <div class="md:col-span-7 space-y-2 text-xs">
+                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> 1. Logistyka / Stół urobku</span>
+                                <span class="font-mono-numbers font-extrabold text-rose-400">34.5% (51m)</span>
+                            </div>
+                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> 2. UR - Podajniki wiązek</span>
+                                <span class="font-mono-numbers font-extrabold text-amber-400">25.7% (38m)</span>
+                            </div>
+                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-gold-500"></span> 3. Zużycie tarcz / narzędzi</span>
+                                <span class="font-mono-numbers font-extrabold text-gold-400">18.2% (27m)</span>
+                            </div>
+                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> 4. Przezbrojenia SMED</span>
+                                <span class="font-mono-numbers font-bold text-slate-300">12.8% (19m)</span>
+                            </div>
+                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span> 5. Mikroprzestoje gniazd</span>
+                                <span class="font-mono-numbers font-bold text-slate-400">8.8% (13m)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 pt-3.5 border-t border-graphite-750 text-xs text-slate-300 flex items-center justify-between">
+                    <span>Rejestracja zdarzeń odbywa się na terminalu shop-floor.</span>
+                    <button onclick="switchTab('capa')" class="text-gold-400 hover:text-gold-300 font-extrabold flex items-center gap-1">
+                        Otwórz sztab 5-Why dla top usterki &rarr;
+                    </button>
+                </div>
+            </div>
+
+            <!-- WYKRES KOŁOWY 2: Składowe OEE Ciągu Technologicznego -->
+            <div class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center pb-4 border-b border-graphite-750">
+                        <div class="flex items-center gap-3">
+                            <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="gauge" class="w-5 h-5"></i></span>
+                            <div>
+                                <h3 class="text-sm sm:text-base font-extrabold text-white">Globalne OEE Ciągu Produkcyjnego</h3>
+                                <p class="text-xs text-slate-400">Dostępność (A) &times; Wydajność (P) &times; Jakość (Q)</p>
+                            </div>
+                        </div>
+                        <span id="global-oee-badge" class="text-base font-extrabold font-mono-numbers text-gold-400 bg-gold-500/15 px-3.5 py-1.5 rounded-lg border border-gold-400">
+                            68.9%
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
+                        <!-- Multi-Ring SVG OEE Breakdown -->
+                        <div class="md:col-span-5 flex flex-col items-center justify-center">
+                            <div class="relative w-40 h-40">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                    <!-- Pierścień Zewnętrzny: Dostępność A (78.4%) -->
+                                    <circle cx="50" cy="50" r="42" stroke="#222b3a" stroke-width="6" fill="transparent"/>
+                                    <circle id="oee-ring-a" cx="50" cy="50" r="42" stroke="#f43f5e" stroke-width="6" stroke-dasharray="263.9" stroke-dashoffset="57.0" stroke-linecap="round" fill="transparent"/>
+                                    
+                                    <!-- Pierścień Środkowy: Wydajność P (89.2%) -->
+                                    <circle cx="50" cy="50" r="32" stroke="#222b3a" stroke-width="6" fill="transparent"/>
+                                    <circle id="oee-ring-p" cx="50" cy="50" r="32" stroke="#f59e0b" stroke-width="6" stroke-dasharray="201.1" stroke-dashoffset="21.7" stroke-linecap="round" fill="transparent"/>
+                                    
+                                    <!-- Pierścień Wewnętrzny: Jakość Q (98.6%) -->
+                                    <circle cx="50" cy="50" r="22" stroke="#222b3a" stroke-width="6" fill="transparent"/>
+                                    <circle id="oee-ring-q" cx="50" cy="50" r="22" stroke="#10b981" stroke-width="6" stroke-dasharray="138.2" stroke-dashoffset="1.9" stroke-linecap="round" fill="transparent"/>
+                                </svg>
+                                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span id="oee-center-percent" class="text-xl font-extrabold font-mono-numbers text-gold-400">68.9%</span>
+                                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">OEE</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Kafelki Składowych OEE -->
+                        <div class="md:col-span-7 space-y-2 text-xs">
+                            <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
+                                <div>
+                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Dostępność (Availability)</span>
+                                    <span class="text-[10px] text-slate-400">Przestoje maszyn i awarie</span>
+                                </div>
+                                <span id="oee-val-a" class="font-mono-numbers font-extrabold text-rose-400 text-sm">78.4%</span>
+                            </div>
+                            <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
+                                <div>
+                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Wydajność (Performance)</span>
+                                    <span class="text-[10px] text-slate-400">Utrata prędkości i taktu</span>
+                                </div>
+                                <span id="oee-val-p" class="font-mono-numbers font-extrabold text-amber-400 text-sm">89.2%</span>
+                            </div>
+                            <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
+                                <div>
+                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Jakość (Quality)</span>
+                                    <span class="text-[10px] text-slate-400">Zgodność detali (FTY)</span>
+                                </div>
+                                <span id="oee-val-q" class="font-mono-numbers font-extrabold text-emerald-400 text-sm">98.6%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between text-xs">
+                    <span class="text-slate-300">Wzorzec World Class OEE: <strong class="text-white font-mono-numbers font-bold">85.0%</strong></span>
+                    <span class="text-amber-400 font-bold font-mono-numbers">Odchyłka: -16.1%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- REALIZACJA PLANU & NOWY BLOCZEK KRYTYCZNEGO WĄSKIEGO GARDŁA -->
+        <!-- ========================================================================= -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            <!-- KAFELEK 1: Wykonanie Planu Zakładu ze Zintegrowanym Wykresem Kołowym -->
-            <div class="lg:col-span-2 bg-graphite-850 border-2 border-gold-500/40 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+            <!-- KAFELEK 1: Wykonanie Planu Zakładu (Z ciągłym naliczaniem produkcji)[cite: 1] -->
+            <div class="lg:col-span-2 bg-graphite-900 border-2 border-gold-500/40 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
                 <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-gold-400 via-gold-500 to-transparent"></div>
                 <div>
                     <div class="flex flex-wrap justify-between items-center gap-3">
@@ -193,24 +343,24 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-6 mt-6 items-center">
                         
-                        <!-- 4 Liczniki Numeryczne -->
+                        <!-- 4 Liczniki Numeryczne[cite: 1] -->
                         <div class="md:col-span-8 grid grid-cols-2 gap-4">
-                            <div class="bg-graphite-900 p-4 rounded-xl border border-graphite-750">
+                            <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
                                 <span class="text-xs text-slate-300 font-semibold block">Palety Butlowe</span>
                                 <div id="prod-pallets-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">84 / 100 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
                                 <span id="prod-pallets-percent" class="text-xs text-amber-300 font-mono-numbers font-bold">84.0% celu</span>
                             </div>
-                            <div class="bg-graphite-900 p-4 rounded-xl border border-graphite-750">
+                            <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
                                 <span class="text-xs text-slate-300 font-semibold block">Kontenery Morskie</span>
                                 <div id="prod-containers-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">6 / 7 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
                                 <span id="prod-containers-percent" class="text-xs text-emerald-300 font-mono-numbers font-bold">85.7% celu</span>
                             </div>
-                            <div class="bg-graphite-900 p-4 rounded-xl border border-gold-500/40 bg-gold-500/5">
+                            <div class="bg-graphite-950 p-4 rounded-xl border border-gold-500/40 bg-gold-500/5">
                                 <span class="text-xs text-gold-400 font-bold block">Tonaż Przerobiony</span>
                                 <div id="prod-tonnage-val" class="text-2xl font-extrabold font-mono-numbers text-gold-300 mt-1">38.4 <span class="text-xs text-slate-300 font-normal">Mg</span></div>
                                 <span class="text-xs text-slate-300 font-mono-numbers">Cel dobowy: 45.0 Mg</span>
                             </div>
-                            <div class="bg-graphite-900 p-4 rounded-xl border border-graphite-750">
+                            <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
                                 <span class="text-xs text-slate-300 font-semibold block">Średni Takt Zakładu</span>
                                 <div id="prod-takt-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">34.8 <span class="text-xs text-slate-400 font-normal">min</span></div>
                                 <span id="prod-takt-delta" class="text-xs text-rose-300 font-mono-numbers font-bold">+4.2 min odchyłki</span>
@@ -218,10 +368,10 @@
                         </div>
 
                         <!-- Zintegrowany Wykres Pierścieniowy Realizacji Zlecenia -->
-                        <div class="md:col-span-4 flex flex-col items-center justify-center p-4 bg-graphite-900 rounded-xl border border-graphite-750">
+                        <div class="md:col-span-4 flex flex-col items-center justify-center p-4 bg-graphite-950 rounded-xl border border-graphite-750">
                             <div class="relative w-32 h-32">
                                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <circle cx="50" cy="50" r="40" stroke="#252d3d" stroke-width="12" fill="transparent"/>
+                                    <circle cx="50" cy="50" r="40" stroke="#222b3a" stroke-width="12" fill="transparent"/>
                                     <circle id="donut-plan-circle" cx="50" cy="50" r="40" stroke="#eab308" stroke-width="12" stroke-dasharray="251.2" stroke-dashoffset="38.7" stroke-linecap="round" fill="transparent" class="transition-all duration-1000"/>
                                 </svg>
                                 <div class="absolute inset-0 flex flex-col items-center justify-center">
@@ -243,40 +393,60 @@
                 </div>
             </div>
 
-            <!-- KAFELEK 2: Krytyczne Wąskie Gardło -->
-            <div class="bg-graphite-850 border-2 border-rose-500/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden">
+            <!-- KAFELEK 2: NOWY BLOCZEK KRYTYCZNEGO WĄSKIEGO GARDŁA (DANE TWARDE + LISTA AWARII) -->
+            <div id="bottleneck-card" class="bg-graphite-900 border-2 border-rose-500/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden">
                 <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500"></div>
                 <div>
                     <div class="flex items-center justify-between">
                         <span class="px-3 py-1 rounded-lg text-xs font-mono-numbers font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/50 uppercase tracking-wider flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span> Krytyczne Wąskie Gardło
                         </span>
-                        <span class="text-xs font-mono-numbers font-bold text-slate-300">68% strat ciągu</span>
+                        <span id="bottleneck-share-badge" class="text-xs font-mono-numbers font-bold text-slate-300">68% strat ciągu</span>
                     </div>
 
-                    <div class="mt-4">
-                        <h3 id="bottleneck-machine-name" class="text-lg font-bold text-white">Laser BLM Płytowy CNC</h3>
-                        <p id="bottleneck-fault-desc" class="text-xs text-rose-300 font-bold mt-1">Zablokowany stół / spiętrzenie usuwania urobku</p>
-                        <p id="bottleneck-impact-note" class="text-xs text-slate-300 mt-2 leading-relaxed">
-                            Brak odbioru ażuru i wzmocnień naroży kontenera wstrzymuje cięcie. Z powodu braku detali cela zrobotyzowana spawania czeka na komponenty.
-                        </p>
+                    <!-- Nagłówek Maszyny Lidera Strat -->
+                    <div class="mt-4 pb-3 border-b border-graphite-750">
+                        <div class="flex justify-between items-baseline">
+                            <h3 id="bottleneck-machine-name" class="text-lg font-extrabold text-white">Laser BLM Płytowy CNC</h3>
+                            <span id="bottleneck-station-tag" class="text-xs font-mono-numbers font-bold bg-graphite-950 px-2.5 py-0.5 rounded border border-graphite-750 text-gold-400">G-01</span>
+                        </div>
+                        <div class="flex items-center gap-4 mt-2 text-xs font-mono-numbers">
+                            <span>Przestój: <strong id="bottleneck-duration" class="text-rose-400 font-bold">51 min</strong></span>
+                            <span>Koszt: <strong id="bottleneck-cost" class="text-gold-400 font-bold">3 825 PLN</strong></span>
+                            <span>OEE: <strong id="bottleneck-oee" class="text-white font-bold">62.6%</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Dynamiczny Feed Ostatnich Zgłoszeń Maszyny -->
+                    <div class="mt-3.5 space-y-2">
+                        <span class="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">Rejestr awarii w toku (Oczekuje na CAPA):</span>
+                        <div id="bottleneck-events-feed" class="space-y-2">
+                            <!-- Generowane dynamicznie przez dashboard.js -->
+                            <div class="p-2.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs">
+                                <div class="flex justify-between font-bold text-rose-300">
+                                    <span>BLM_JAM: Zablokowany stół urobku</span>
+                                    <span class="font-mono-numbers">51 min</span>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1 italic font-medium">"Pisk prowadnicy osi Y i zakleszczony ażur"</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="mt-5 pt-3 border-t border-graphite-750 bg-graphite-900 p-3.5 rounded-xl border border-graphite-700 flex items-center justify-between">
-                    <div>
-                        <span class="text-[11px] uppercase text-slate-300 block font-bold">Skumulowany przestój:</span>
-                        <span id="bottleneck-duration" class="text-base font-extrabold font-mono-numbers text-rose-400">51 minut</span>
-                    </div>
-                    <button onclick="openMachineModal(0)" class="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-2 border-rose-500/50 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
-                        Diagnoza <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                <!-- Przyciski Akcji: Historia CAPA oraz Skok do Sztabu -->
+                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between gap-2">
+                    <button onclick="toggleCapaHistoryModal()" class="px-3.5 py-2 bg-graphite-950 hover:bg-graphite-850 text-slate-300 border border-graphite-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                        <i data-lucide="history" class="w-4 h-4 text-gold-400"></i> Historia CAPA
+                    </button>
+                    <button onclick="analyzeActiveBottleneckInCapa()" class="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-2 border-rose-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm">
+                        <i data-lucide="shield-alert" class="w-4 h-4"></i> Analizuj w 5-Why
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- 3 Najkosztowniejsze Przestoje -->
-        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl">
+        <!-- Top 3 Najkosztowniejsze Przestoje -->
+        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-graphite-750 gap-2">
                 <div class="flex items-center gap-2.5">
                     <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="trending-down" class="w-5 h-5"></i></span>
@@ -292,7 +462,7 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
-                <div class="bg-graphite-900 border-2 border-rose-500/50 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
+                <div class="bg-graphite-950 border-2 border-rose-500/50 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
                     <div>
                         <div class="flex justify-between items-start">
                             <span class="px-2.5 py-1 rounded text-[11px] font-mono-numbers font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">#1 NAJWYŻSZY KOSZT</span>
@@ -308,7 +478,7 @@
                     </div>
                 </div>
 
-                <div class="bg-graphite-900 border-2 border-amber-500/50 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
+                <div class="bg-graphite-950 border-2 border-amber-500/50 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
                     <div>
                         <div class="flex justify-between items-start">
                             <span class="px-2.5 py-1 rounded text-[11px] font-mono-numbers font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">#2 W STRATACH</span>
@@ -324,10 +494,10 @@
                     </div>
                 </div>
 
-                <div class="bg-graphite-900 border-2 border-graphite-700 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
+                <div class="bg-graphite-950 border-2 border-graphite-750 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
                     <div>
                         <div class="flex justify-between items-start">
-                            <span class="px-2.5 py-1 rounded text-[11px] font-mono-numbers font-bold bg-graphite-800 text-slate-200 border border-graphite-600">#3 W STRATACH</span>
+                            <span class="px-2.5 py-1 rounded text-[11px] font-mono-numbers font-bold bg-graphite-850 text-slate-200 border border-graphite-700">#3 W STRATACH</span>
                             <span class="text-sm font-extrabold text-gold-400 font-mono-numbers">2 100 PLN</span>
                         </div>
                         <h4 class="text-sm font-bold text-white mt-3">Wykończenie Przedgalwaniczne</h4>
@@ -343,7 +513,7 @@
         </div>
 
         <!-- Park Maszynowy: Top 5 z opcją 10 -->
-        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl overflow-hidden shadow-xl">
+        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl overflow-hidden shadow-xl">
             <div class="px-6 py-4.5 border-b border-graphite-750 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div class="flex items-center gap-3">
                     <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="factory" class="w-5 h-5"></i></span>
@@ -354,13 +524,13 @@
                 </div>
                 <div class="flex items-center gap-3">
                     <span class="text-xs text-slate-300 font-mono-numbers font-semibold">Widok: <strong class="text-gold-400 font-bold" id="machines-view-label">Top 5 Krytycznych</strong></span>
-                    <button onclick="toggleAllMachines()" id="btn-toggle-machines" class="px-4 py-2 bg-graphite-800 hover:bg-graphite-750 text-xs font-bold text-slate-100 border-2 border-gold-500/40 rounded-xl transition flex items-center gap-2 shadow-sm">
+                    <button onclick="toggleAllMachines()" id="btn-toggle-machines" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-100 border-2 border-gold-500/40 rounded-xl transition flex items-center gap-2 shadow-sm">
                         <i data-lucide="chevrons-up-down" class="w-4 h-4 text-gold-400"></i> Pokaż Wszystkie (10)
                     </button>
                 </div>
             </div>
 
-            <div class="hidden md:grid grid-cols-12 px-6 py-3 bg-graphite-900/90 text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-graphite-750">
+            <div class="hidden md:grid grid-cols-12 px-6 py-3 bg-graphite-950 text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-graphite-750">
                 <div class="col-span-4">Gniazdo Robocze / Maszyna</div>
                 <div class="col-span-2 text-center">Dostępność (A)</div>
                 <div class="col-span-2 text-center">Wydajność (P)</div>
@@ -372,154 +542,11 @@
             <div id="machines-container" class="divide-y divide-graphite-750"></div>
         </div>
 
-        <!-- Dolna Sekcja: 2 Wykresy Kołowe (Pareto Strat + Struktura OEE) -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            <!-- WYKRES KOŁOWY 1: Pareto Przyczyn Przestojów -->
-            <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-                <div>
-                    <div class="flex justify-between items-center pb-4 border-b border-graphite-750">
-                        <div class="flex items-center gap-2.5">
-                            <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="pie-chart" class="w-5 h-5"></i></span>
-                            <div>
-                                <h3 class="text-sm font-bold text-white">Struktura Pareto Przestojów (Udział w Czasie Strat)</h3>
-                                <p class="text-xs text-slate-400">Podział kategorii awarii</p>
-                            </div>
-                        </div>
-                        <span id="pareto-total-time" class="text-xs font-mono-numbers font-bold text-gold-400 bg-gold-500/10 border border-gold-400/40 px-3 py-1 rounded-lg">Suma: 148 min strat</span>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
-                        <!-- Wykres Donut SVG -->
-                        <div class="md:col-span-5 flex flex-col items-center justify-center">
-                            <div class="relative w-40 h-40">
-                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <circle cx="50" cy="50" r="38" stroke="#f43f5e" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="0" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#f59e0b" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="82.3" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#eab308" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="143.7" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#64748b" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="187.1" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#334155" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="217.7" fill="transparent"/>
-                                </svg>
-                                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span class="text-lg font-extrabold font-mono-numbers text-white">148</span>
-                                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Minut</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Legenda Pareto -->
-                        <div class="md:col-span-7 space-y-2.5 text-xs">
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-900 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> 1. Logistyka / Stół urobku</span>
-                                <span class="font-mono-numbers font-extrabold text-rose-400">34.5% (51m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-900 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> 2. UR - Podajniki wiązek</span>
-                                <span class="font-mono-numbers font-extrabold text-amber-400">25.7% (38m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-900 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-gold-500"></span> 3. Zużycie tarcz / narzędzi</span>
-                                <span class="font-mono-numbers font-extrabold text-gold-400">18.2% (27m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-900 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> 4. Przezbrojenia SMED</span>
-                                <span class="font-mono-numbers font-bold text-slate-300">12.8% (19m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-900 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span> 5. Mikroprzestoje gniazd</span>
-                                <span class="font-mono-numbers font-bold text-slate-400">8.8% (13m)</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-5 pt-3.5 border-t border-graphite-750 text-xs text-slate-300 flex items-center justify-between">
-                    <span>Rejestracja zdarzeń odbywa się na terminalu shop-floor.</span>
-                    <button onclick="switchTab('capa')" class="text-gold-400 hover:text-gold-300 font-bold flex items-center gap-1">
-                        Otwórz sztab 5-Why dla top usterki &rarr;
-                    </button>
-                </div>
-            </div>
-
-            <!-- WYKRES KOŁOWY 2: Składowe OEE Ciągu Technologicznego -->
-            <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-                <div>
-                    <div class="flex justify-between items-center pb-4 border-b border-graphite-750">
-                        <div class="flex items-center gap-2.5">
-                            <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="gauge" class="w-5 h-5"></i></span>
-                            <div>
-                                <h3 class="text-sm font-bold text-white">Globalne OEE Ciągu Produkcyjnego</h3>
-                                <p class="text-xs text-slate-400">Dostępność &times; Wydajność &times; Jakość</p>
-                            </div>
-                        </div>
-                        <span id="global-oee-badge" class="text-base font-extrabold font-mono-numbers text-gold-400 bg-gold-500/15 px-3 py-1 rounded-lg border border-gold-400">
-                            68.9%
-                        </span>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
-                        <!-- Multi-Ring SVG OEE Breakdown -->
-                        <div class="md:col-span-5 flex flex-col items-center justify-center">
-                            <div class="relative w-40 h-40">
-                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <!-- Pierścień Zewnętrzny: Dostępność A (78.4%) -->
-                                    <circle cx="50" cy="50" r="42" stroke="#252d3d" stroke-width="6" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="42" stroke="#f43f5e" stroke-width="6" stroke-dasharray="263.9" stroke-dashoffset="57.0" stroke-linecap="round" fill="transparent"/>
-                                    
-                                    <!-- Pierścień Środkowy: Wydajność P (89.2%) -->
-                                    <circle cx="50" cy="50" r="32" stroke="#252d3d" stroke-width="6" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="32" stroke="#f59e0b" stroke-width="6" stroke-dasharray="201.1" stroke-dashoffset="21.7" stroke-linecap="round" fill="transparent"/>
-                                    
-                                    <!-- Pierścień Wewnętrzny: Jakość Q (98.6%) -->
-                                    <circle cx="50" cy="50" r="22" stroke="#252d3d" stroke-width="6" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="22" stroke="#10b981" stroke-width="6" stroke-dasharray="138.2" stroke-dashoffset="1.9" stroke-linecap="round" fill="transparent"/>
-                                </svg>
-                                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span class="text-xl font-extrabold font-mono-numbers text-gold-400">68.9%</span>
-                                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">OEE</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Kafelki Składowych OEE -->
-                        <div class="md:col-span-7 space-y-2.5 text-xs">
-                            <div class="p-3 bg-graphite-900 rounded-xl border border-graphite-750 flex justify-between items-center">
-                                <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Dostępność (Availability)</span>
-                                    <span class="text-[10px] text-slate-400">Przestoje maszyn i awarie</span>
-                                </div>
-                                <span class="font-mono-numbers font-extrabold text-rose-400 text-sm">78.4%</span>
-                            </div>
-                            <div class="p-3 bg-graphite-900 rounded-xl border border-graphite-750 flex justify-between items-center">
-                                <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Wydajność (Performance)</span>
-                                    <span class="text-[10px] text-slate-400">Utrata prędkości i taktu</span>
-                                </div>
-                                <span class="font-mono-numbers font-extrabold text-amber-400 text-sm">89.2%</span>
-                            </div>
-                            <div class="p-3 bg-graphite-900 rounded-xl border border-graphite-750 flex justify-between items-center">
-                                <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Jakość (Quality)</span>
-                                    <span class="text-[10px] text-slate-400">Zgodność detali (FTY)</span>
-                                </div>
-                                <span class="font-mono-numbers font-extrabold text-emerald-400 text-sm">98.6%</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between text-xs">
-                    <span class="text-slate-300">Wzorzec World Class OEE: <strong class="text-white font-mono-numbers font-bold">85.0%</strong></span>
-                    <span class="text-amber-400 font-bold font-mono-numbers">Odchyłka: -16.1%</span>
-                </div>
-            </div>
-        </div>
-
     </main>
 
     <!-- TAB 2: SZTAB KRYZYSOWY (5-WHY / CAPA Z KOLEJKĄ PUSH-PULL & OVERRIDE) -->
     <main id="tab-capa" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl space-y-6">
+        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
             
             <div class="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
                 <div>
@@ -532,14 +559,13 @@
                     </p>
                 </div>
 
-                <!-- Przycisk pobrania najnowszego zgłoszenia z kolejki Push-Pull -->
-                <button onclick="pullLatestEventToCapa()" id="btn-pull-capa" class="px-5 py-2.5 bg-graphite-800 hover:bg-graphite-750 text-gold-400 border-2 border-gold-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-2 shadow-sm">
+                <button onclick="pullLatestEventToCapa()" id="btn-pull-capa" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-gold-400 border-2 border-gold-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-2 shadow-sm">
                     <i data-lucide="download" class="w-4 h-4"></i> Pobierz Najnowszy Meldunek z Hali
                 </button>
             </div>
 
             <!-- Aktywny Kontekst Zdarzenia Pobranego z Kolejki -->
-            <div id="capa-incident-header" class="p-4.5 rounded-2xl bg-graphite-900 border-2 border-graphite-750 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div id="capa-incident-header" class="p-5 rounded-2xl bg-graphite-950 border-2 border-graphite-750 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                     <span id="capa-station-code" class="text-xs font-mono-numbers uppercase text-gold-400 font-extrabold block">GNIAZDO: G-01 (Laser BLM Płytowy)</span>
                     <h3 id="capa-fault-headline" class="text-base font-bold text-white mt-0.5">Zablokowany stół usuwania urobku / brak odbioru ażuru</h3>
@@ -552,18 +578,18 @@
             </div>
 
             <!-- Kontekst Człowieka i Uruchomienie Asysty AI -->
-            <div class="bg-graphite-900 p-5 rounded-2xl border-2 border-graphite-750 space-y-4">
+            <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
                         <i data-lucide="message-square-plus" class="w-4 h-4"></i> Kontekst inżynierski / Notatki z Gemba:
                     </label>
                     <div class="flex items-center gap-2">
-                        <button onclick="injectPresetPrompt('wypaczenie')" class="text-xs px-2.5 py-1 rounded-lg bg-graphite-800 text-slate-200 hover:text-gold-400 border border-graphite-700 transition font-medium">Preset: Partia stali S355</button>
+                        <button onclick="injectPresetPrompt('wypaczenie')" class="text-xs px-2.5 py-1 rounded-lg bg-graphite-850 text-slate-200 hover:text-gold-400 border border-graphite-700 transition font-medium">Preset: Partia stali S355</button>
                         <button onclick="injectPresetPrompt('hal')" class="text-xs px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40 transition font-bold">⚠️ Test AI Interlock</button>
                     </div>
                 </div>
 
-                <textarea id="capa-human-input" rows="2" placeholder="Wpisz dodatkowe obserwacje z inspekcji hali..." class="w-full bg-graphite-850 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 transition font-sans"></textarea>
+                <textarea id="capa-human-input" rows="2" placeholder="Wpisz dodatkowe obserwacje z inspekcji hali..." class="w-full bg-graphite-900 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 transition font-sans"></textarea>
                 
                 <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
                     <p class="text-xs text-slate-300">
@@ -577,7 +603,7 @@
 
             <!-- Obszar Wyników 5-Why oraz Przełącznik Manager Override -->
             <div id="capa-result-area" class="space-y-5">
-                <div class="p-8 text-center bg-graphite-900 rounded-xl border border-graphite-750 text-slate-400 text-xs font-medium">
+                <div class="p-8 text-center bg-graphite-950 rounded-xl border border-graphite-750 text-slate-400 text-xs font-medium">
                     Pobierz meldunek z kolejki lub wybierz usterkę i kliknij „Generuj Kaskadę 5-Why (Gemini AI)”.
                 </div>
             </div>
@@ -586,7 +612,7 @@
 
     <!-- TAB 3: AUDYT WIZUALNY 5S -->
     <main id="tab-audit5s" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl space-y-6">
+        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
             <div class="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
                 <div>
                     <div class="flex items-center gap-3">
@@ -598,7 +624,7 @@
 
                 <div class="flex items-center gap-2.5">
                     <span class="text-xs font-bold text-slate-300 uppercase">Stanowisko:</span>
-                    <select id="audit-workstation-select" onchange="loadStationAudit()" class="bg-graphite-900 border border-graphite-700 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
+                    <select id="audit-workstation-select" onchange="loadStationAudit()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
                         <option value="ws_weld" selected>Spawanie Manualne MIG/MAG (Stanowisko S-02)</option>
                         <option value="ws_laser">Laser BLM Płytowy CNC (Strefa Rozładunku L-01)</option>
                         <option value="ws_saw">Piła Tarczowa do Metalu (Gniazdo P-01)</option>
@@ -608,12 +634,12 @@
                 </div>
             </div>
 
-            <div class="bg-graphite-900 p-5 rounded-2xl border-2 border-graphite-750 flex flex-col md:flex-row items-stretch md:items-center gap-4">
+            <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 flex flex-col md:flex-row items-stretch md:items-center gap-4">
                 <div class="flex-1 space-y-1.5">
                     <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
                         <i data-lucide="eye" class="w-4 h-4"></i> Wskazówki & Ograniczenia dla Agenta Wizyjnego:
                     </label>
-                    <input type="text" id="audit-human-notes" value="Zwróć uwagę na drożność odciągów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-850 border-2 border-graphite-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
+                    <input type="text" id="audit-human-notes" value="Zwróć uwagę na drożność odciągów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-900 border-2 border-graphite-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
                 </div>
                 <button onclick="triggerVisionAudit()" id="btn-run-vision" class="px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0 self-end md:self-auto">
                     <i data-lucide="scan-line" class="w-4 h-4"></i> Wykonaj Audyt Obrazu AI
@@ -626,7 +652,7 @@
 
     <!-- TAB 4: SYMULATOR WHAT-IF -->
     <main id="tab-whatif" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl space-y-6">
+        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
             <div class="flex items-center gap-3 pb-5 border-b border-graphite-750">
                 <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="sliders" class="w-6 h-6"></i></span>
                 <div>
@@ -636,7 +662,7 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
+                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
                     <div class="flex justify-between text-xs font-bold">
                         <span class="text-slate-200">Skrócenie usuwania urobku (BLM)</span>
                         <span id="slider-1-val" class="text-gold-400 font-mono-numbers">-30%</span>
@@ -645,7 +671,7 @@
                     <p class="text-xs text-slate-300 leading-relaxed">Dodanie dedykowanego wózka buforowego na ażury.</p>
                 </div>
 
-                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
+                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
                     <div class="flex justify-between text-xs font-bold">
                         <span class="text-slate-200">Wymiana oprzyrządowania Giętarki</span>
                         <span id="slider-2-val" class="text-gold-400 font-mono-numbers">8.6 min (Baza)</span>
@@ -654,7 +680,7 @@
                     <p class="text-xs text-slate-300 leading-relaxed">Standard SMED wózka przygotowawczego matryc.</p>
                 </div>
 
-                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
+                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
                     <div class="flex justify-between text-xs font-bold">
                         <span class="text-slate-200">Eliminacja wad przedgalwanicznych</span>
                         <span id="slider-3-val" class="text-gold-400 font-mono-numbers">90% zgodności</span>
@@ -664,7 +690,7 @@
                 </div>
             </div>
 
-            <div class="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-graphite-900 to-graphite-850 border-2 border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
+            <div class="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-graphite-950 to-graphite-900 border-2 border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
                 <div class="flex items-center gap-3.5">
                     <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-bold">
                         <i data-lucide="zap" class="w-6 h-6"></i>
@@ -685,8 +711,8 @@
 
     <!-- MODAL MASZYNY -->
     <div id="machine-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
-        <div class="bg-graphite-850 border-[3px] border-gold-500 w-full max-w-3xl rounded-3xl shadow-2xl shadow-gold-500/10 overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="px-6 py-5 bg-graphite-900 border-b-2 border-graphite-750 flex items-center justify-between">
+        <div class="bg-graphite-900 border-[3px] border-gold-500 w-full max-w-3xl rounded-3xl shadow-2xl shadow-gold-500/10 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
                 <div class="flex items-center gap-3.5">
                     <div id="modal-status-indicator" class="w-3.5 h-3.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
                     <div>
@@ -694,7 +720,7 @@
                         <p id="modal-machine-meta" class="text-xs text-slate-300 font-mono-numbers font-medium">Gniazdo G-01 | Operator: Jan Kowalski | Zmiana I</p>
                     </div>
                 </div>
-                <button onclick="closeMachineModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-800 border border-graphite-700 transition">
+                <button onclick="closeMachineModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
@@ -703,22 +729,22 @@
                 <div>
                     <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Zunifikowane Wskaźniki Efektywności (OEE Breakdown)</h4>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-                        <div class="bg-graphite-900 p-3.5 rounded-xl border border-graphite-750 text-center">
+                        <div class="bg-graphite-950 p-3.5 rounded-xl border border-graphite-750 text-center">
                             <span class="text-[11px] text-slate-300 block uppercase font-semibold">Dostępność (A)</span>
                             <span id="modal-metric-a" class="text-xl font-extrabold font-mono-numbers text-white">71.5%</span>
                             <span class="text-xs text-rose-400 block font-bold">-51 min strat</span>
                         </div>
-                        <div class="bg-graphite-900 p-3.5 rounded-xl border border-graphite-750 text-center">
+                        <div class="bg-graphite-950 p-3.5 rounded-xl border border-graphite-750 text-center">
                             <span class="text-[11px] text-slate-300 block uppercase font-semibold">Wydajność (P)</span>
                             <span id="modal-metric-p" class="text-xl font-extrabold font-mono-numbers text-white">88.4%</span>
                             <span class="text-xs text-amber-300 block font-bold">Takt stabilny</span>
                         </div>
-                        <div class="bg-graphite-900 p-3.5 rounded-xl border border-graphite-750 text-center">
+                        <div class="bg-graphite-950 p-3.5 rounded-xl border border-graphite-750 text-center">
                             <span class="text-[11px] text-slate-300 block uppercase font-semibold">Jakość (Q)</span>
                             <span id="modal-metric-q" class="text-xl font-extrabold font-mono-numbers text-white">99.1%</span>
                             <span class="text-xs text-emerald-400 block font-bold">Odpad 0.9%</span>
                         </div>
-                        <div class="bg-graphite-900 p-3.5 rounded-xl border-2 border-gold-500/50 bg-gold-500/10 text-center">
+                        <div class="bg-graphite-950 p-3.5 rounded-xl border-2 border-gold-500/50 bg-gold-500/10 text-center">
                             <span class="text-[11px] text-gold-400 block uppercase font-extrabold">OEE Gniazda</span>
                             <span id="modal-metric-oee" class="text-xl font-extrabold font-mono-numbers text-gold-300">62.6%</span>
                             <span class="text-xs text-slate-300 block font-medium">Cel: 85.0%</span>
@@ -726,23 +752,23 @@
                     </div>
                 </div>
 
-                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-2.5">
+                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-2.5">
                     <h4 class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
                         <i data-lucide="gauge" class="w-4 h-4"></i> Specyficzna Telemetria Technologiczna Stanowiska
                     </h4>
                     <div id="modal-specific-telemetry" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs"></div>
                 </div>
 
-                <div class="bg-graphite-900 p-5 rounded-2xl border-2 border-graphite-750 space-y-3.5">
+                <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 space-y-3.5">
                     <div class="flex justify-between items-center">
                         <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
                             <i data-lucide="edit-3" class="w-4 h-4 text-gold-400"></i> Notatka Inżynierska do Zdarzeń Zmiany
                         </h4>
                         <span id="modal-note-status" class="text-xs font-mono-numbers font-bold text-emerald-400">Pobrano z bazy MES</span>
                     </div>
-                    <textarea id="modal-engineer-notes" rows="2" class="w-full bg-graphite-850 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans"></textarea>
+                    <textarea id="modal-engineer-notes" rows="2" class="w-full bg-graphite-900 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans"></textarea>
                     <div class="flex justify-end">
-                        <button onclick="saveMachineNote()" class="px-4 py-2 bg-graphite-800 hover:bg-graphite-750 text-slate-200 border border-graphite-600 rounded-xl text-xs font-bold transition">
+                        <button onclick="saveMachineNote()" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-slate-200 border border-graphite-600 rounded-xl text-xs font-bold transition">
                             Zaktualizuj Notatkę Stanowiska
                         </button>
                     </div>
@@ -751,14 +777,14 @@
                 <div>
                     <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">Rejestr Zdarzeń Zmiany (Oś Czasu)</h4>
                     <div class="space-y-2.5 text-xs">
-                        <div class="p-3 rounded-xl bg-graphite-900 border border-graphite-750 flex justify-between items-center">
+                        <div class="p-3 rounded-xl bg-graphite-950 border border-graphite-750 flex justify-between items-center">
                             <div class="flex items-center gap-2.5">
                                 <span class="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm shadow-rose-500/50"></span>
                                 <span class="font-bold text-white">Przestój nieplanowany: Zablokowanie wygarniacza ażuru</span>
                             </div>
                             <span class="font-mono-numbers text-rose-400 font-extrabold">51 min (10:14 - 11:05)</span>
                         </div>
-                        <div class="p-3 rounded-xl bg-graphite-900 border border-graphite-750 flex justify-between items-center">
+                        <div class="p-3 rounded-xl bg-graphite-950 border border-graphite-750 flex justify-between items-center">
                             <div class="flex items-center gap-2.5">
                                 <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50"></span>
                                 <span class="font-bold text-white">Wymiana stołu paletowego & inspekcja optyki</span>
@@ -769,8 +795,8 @@
                 </div>
             </div>
 
-            <div class="px-6 py-4 bg-graphite-900 border-t-2 border-graphite-750 flex justify-end gap-3">
-                <button onclick="closeMachineModal()" class="px-5 py-2.5 bg-graphite-800 hover:bg-graphite-750 text-xs font-bold text-slate-200 rounded-xl transition">Zamknij</button>
+            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex justify-end gap-3">
+                <button onclick="closeMachineModal()" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">Zamknij</button>
                 <button onclick="jumpToCapaFromModal()" class="px-6 py-2.5 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-md">
                     <i data-lucide="shield-alert" class="w-4 h-4"></i> Analizuj to gniazdo w 5-Why
                 </button>
@@ -778,8 +804,41 @@
         </div>
     </div>
 
+    <!-- MODAL: HISTORIA WDROŻONYCH RAPORTÓW CAPA -->
+    <div id="capa-history-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-graphite-900 border-[3px] border-emerald-500/60 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-400/40 flex items-center justify-center font-bold">
+                        <i data-lucide="shield-check" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Rejestr Wdrożonych Działań Korygujących (CAPA Log)</h3>
+                        <p class="text-xs text-slate-300 font-mono-numbers">Zadania przekazane do UR / Technologii (Ślad audytowy)</p>
+                    </div>
+                </div>
+                <button onclick="toggleCapaHistoryModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div id="capa-history-list" class="p-6 overflow-y-auto space-y-4 flex-1">
+                <!-- Wstrzykiwane dynamicznie przez dashboard.js -->
+                <div class="p-8 text-center text-slate-400 text-xs">
+                    Brak zamkniętych zadań CAPA w bieżącej zmianie.
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex justify-end">
+                <button onclick="toggleCapaHistoryModal()" class="px-6 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">
+                    Zamknij Rejestr
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Status Footer -->
-    <footer class="bg-graphite-850 border-t border-graphite-750 py-4 mt-auto">
+    <footer class="bg-graphite-900 border-t border-graphite-750 py-4 mt-auto">
         <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300">
             <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-full bg-gold-400"></span>
@@ -787,7 +846,7 @@
             </div>
             <div class="flex items-center gap-5 text-xs font-mono-numbers font-medium">
                 <span>Magistrala MES: proton_telemetry_bus</span>
-                <span>Opóźnienie transmisji: 2.0s</span>
+                <span>Pamięć trwała: localStorage active</span>
                 <span class="text-gold-400 font-bold">PANS Krosno</span>
             </div>
         </div>

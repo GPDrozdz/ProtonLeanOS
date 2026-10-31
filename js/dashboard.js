@@ -1,15 +1,19 @@
 /**
- * Proton Lean OS - Executive Dashboard Logic
- * Sterowanie kokpitem zarządczym, kolejką Push-Pull, wykresem kołowym i sztabem 5-Why.
+ * Proton Lean OS - Executive Dashboard Logic (v2.5)
+ * Trwałość w localStorage, automatyczny takt produkcji, rotacja wąskiego gardła i rejestr CAPA.
  */
+
+const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v25';
+const STORAGE_KEY_CAPA = 'proton_lean_capa_history_v25';
 
 let machineFleet = [];
 let showAllMachines = false;
 let activeModalMachineId = 0;
 let isHalLocked = false;
 
-// Bufor kolejki zdarzeń Push-Pull (Notification Drawer)
+// Bufor zdarzeń i rejestr CAPA (odczyt z localStorage)
 let incomingEventsQueue = [];
+let capaHistory = [];
 let activeIncidentContext = null;
 
 // Stan planu wykonania produkcji (Model matematyczny)
@@ -26,44 +30,87 @@ let productionState = {
     totalDowntimeMin: 148
 };
 
-// 1. Inicjalizacja i pobranie danych początkowych
+// 1. Inicjalizacja i odczyt pamięci trwałej
 async function initDashboard() {
+    loadPersistentStorage();
+
     try {
         const res = await fetch('data/factory_state.json');
         if (res.ok) {
             machineFleet = await res.json();
-        } else {
-            console.warn('[Dashboard] Błąd pobierania data/factory_state.json, używam bufora awaryjnego.');
         }
     } catch (e) {
-        console.warn('[Dashboard] Fetch lokalny zablokowany (CORS/file://), ładuję dane bazowe.', e);
+        console.warn('[Dashboard] Fetch lokalny pominięty, ładuję dane bazowe.', e);
     }
 
     renderMachines();
     updateProductionMetricsUI();
+    updateNotificationBadge();
+    renderDrawerEvents();
+    recalculateBottleneckWidget();
+    startBackgroundProductionTicker();
+
     if (window.lucide) lucide.createIcons();
 
-    // Rejestracja odbiornika magistrali telemetrycznej z bus.js
+    // Rejestracja magistrali zdarzeń
     if (typeof subscribeTelemetryEvents === 'function') {
         subscribeTelemetryEvents(handleIncomingTelemetry);
     }
 }
 
-// 2. Obsługa odebranego meldunku z magistrali (Zasada Push: wpada do bufora)
+// 2. Obsługa localStorage (Trwałość danych)
+function loadPersistentStorage() {
+    try {
+        const storedQueue = localStorage.getItem(STORAGE_KEY_QUEUE);
+        if (storedQueue) {
+            incomingEventsQueue = JSON.parse(storedQueue);
+        }
+
+        const storedCapa = localStorage.getItem(STORAGE_KEY_CAPA);
+        if (storedCapa) {
+            capaHistory = JSON.parse(storedCapa);
+        }
+    } catch (e) {
+        console.error('[Dashboard] Błąd odczytu localStorage:', e);
+    }
+}
+
+function savePersistentStorage() {
+    try {
+        localStorage.setItem(STORAGE_KEY_QUEUE, JSON.stringify(incomingEventsQueue));
+        localStorage.setItem(STORAGE_KEY_CAPA, JSON.stringify(capaHistory));
+    } catch (e) {
+        console.error('[Dashboard] Błąd zapisu do localStorage:', e);
+    }
+}
+
+// 3. Automatyczny Takt Produkcji (~2 palety na minutę w tle)
+function startBackgroundProductionTicker() {
+    // Co 30 sekund przybywa 1 paleta, jeśli brak aktywnej awarii na terminalu
+    setInterval(() => {
+        if (productionState.palletsDone < productionState.palletsTarget) {
+            productionState.palletsDone += 1;
+            productionState.tonnageDone = parseFloat((productionState.tonnageDone + 0.35).toFixed(1));
+            updateProductionMetricsUI();
+        }
+    }, 30000);
+}
+
+// 4. Odbiór meldunku z magistrali (Zasada Push)
 function handleIncomingTelemetry(payload) {
     if (!payload) return;
 
-    // Dodanie do kolejki Push-Pull Drawer
-    incomingEventsQueue.unshift({
+    const newEvent = {
         ...payload,
         receivedAt: new Date().toLocaleTimeString().slice(0, 5),
-        status: "OCZEKUJE"
-    });
+        status: "PENDING_ANALYSIS"
+    };
+
+    incomingEventsQueue.unshift(newEvent);
+    savePersistentStorage();
 
     updateNotificationBadge();
     renderDrawerEvents();
-
-    // Przeliczenie modelu matematycznego produkcji i wskaźników
     recalculateProductionImpact(payload);
 
     // Aktualizacja stanu gniazda na liście maszyn
@@ -77,38 +124,20 @@ function handleIncomingTelemetry(payload) {
         target.notes = payload.operatorNote;
     }
 
-    // Aktualizacja kafelka wąskiego gardła
-    const bottleneckName = document.getElementById('bottleneck-machine-name');
-    const bottleneckDesc = document.getElementById('bottleneck-fault-desc');
-    const bottleneckDur = document.getElementById('bottleneck-duration');
-    const bottleneckNote = document.getElementById('bottleneck-impact-note');
-
-    if (bottleneckName) bottleneckName.innerText = target ? target.name : payload.machineName;
-    if (bottleneckDesc) bottleneckDesc.innerText = payload.faultDescription;
-    if (bottleneckDur) bottleneckDur.innerText = `${payload.durationMin} minut`;
-    if (bottleneckNote) bottleneckNote.innerText = `Operator: ${payload.operatorName}. Źródło: ${payload.source}. "${payload.operatorNote}". Strata: ${payload.costTotalPLN.toLocaleString('pl-PL')} PLN.`;
-
-    // Aktualizacja top 1 straty
-    const loss1ValEl = document.getElementById('loss-1-val');
-    const loss1DurEl = document.getElementById('loss-1-duration');
-    if (loss1ValEl) loss1ValEl.innerText = `${payload.costTotalPLN.toLocaleString('pl-PL')} PLN`;
-    if (loss1DurEl) loss1DurEl.innerText = `Czas trwania: ${payload.durationMin} min (${payload.stationCode || 'G-01'})`;
-
     renderMachines();
+    recalculateBottleneckWidget();
     showToastNotification(payload);
 }
 
-// 3. Przeliczanie matematyczne wykonania planu (Wpływ awarii na wskaźniki i wykres kołowy)
+// 5. Przeliczanie matematyczne wykonania planu & Wykresy Kołowe
 function recalculateProductionImpact(payload) {
     const mins = payload.durationMin || 10;
     productionState.totalLossPLN += payload.costTotalPLN;
     productionState.totalDowntimeMin += mins;
 
-    // Każda minuta awarii wydłuża takt średni
     const taktDelta = parseFloat((mins * 0.08).toFixed(1));
     productionState.currentTaktMin = parseFloat((productionState.currentTaktMin + taktDelta).toFixed(1));
 
-    // Jeśli awaria dotyczy początku linii (G-01, G-02, G-03), tracimy sztuki planowane
     if (payload.machineId <= 2) {
         const lostPallets = Math.floor(mins / 25);
         if (lostPallets > 0) {
@@ -121,12 +150,10 @@ function recalculateProductionImpact(payload) {
 }
 
 function updateProductionMetricsUI() {
-    // Obliczenie sumarycznego wykonania zlecenia
     const palletsPct = (productionState.palletsDone / productionState.palletsTarget) * 100;
     const containersPct = (productionState.containersDone / productionState.containersTarget) * 100;
     const totalFulfillment = parseFloat(((palletsPct * 0.6) + (containersPct * 0.4)).toFixed(1));
 
-    // Aktualizacja liczb w UI
     const palletsVal = document.getElementById('prod-pallets-val');
     const palletsPctEl = document.getElementById('prod-pallets-percent');
     const contVal = document.getElementById('prod-containers-val');
@@ -161,21 +188,125 @@ function updateProductionMetricsUI() {
     if (totalLossEl) totalLossEl.innerText = `${productionState.totalLossPLN.toLocaleString('pl-PL')} PLN`;
     if (summaryPercentEl) summaryPercentEl.innerText = `${totalFulfillment}%`;
 
-    // Aktualizacja Wykresu Pierścieniowego SVG (Obwód = 2 * PI * r = 2 * 3.14159 * 40 = 251.3)
+    // Wykres pierścieniowy wykonania planu (SVG r=40, obwód=251.3)
     const donutCircle = document.getElementById('donut-plan-circle');
     const donutText = document.getElementById('donut-plan-text');
     if (donutCircle && donutText) {
         const circumference = 251.3;
-        const offset = circumference - (totalFulfillment / 100) * circumference;
+        const offset = circumference - (Math.min(100, totalFulfillment) / 100) * circumference;
         donutCircle.style.strokeDashoffset = offset;
         donutText.innerText = `${totalFulfillment}%`;
     }
 
-    const paretoTimeEl = document.getElementById('pareto-total-time');
-    if (paretoTimeEl) paretoTimeEl.innerText = `Suma: ${productionState.totalDowntimeMin} min strat`;
+    // Licznik w wykresie Pareto
+    const paretoMinutes = document.getElementById('donut-pareto-minutes');
+    const paretoTotal = document.getElementById('pareto-total-time');
+    if (paretoMinutes) paretoMinutes.innerText = productionState.totalDowntimeMin;
+    if (paretoTotal) paretoTotal.innerText = `Suma: ${productionState.totalDowntimeMin} min strat`;
 }
 
-// 4. Kolejka Push-Pull Drawer (Szuflada Powiadomień)
+// 6. Rotacja Krytycznego Wąskiego Gardła (Dynamic Bottleneck Shifting)
+function recalculateBottleneckWidget() {
+    const card = document.getElementById('bottleneck-card');
+    const nameEl = document.getElementById('bottleneck-machine-name');
+    const tagEl = document.getElementById('bottleneck-station-tag');
+    const durEl = document.getElementById('bottleneck-duration');
+    const costEl = document.getElementById('bottleneck-cost');
+    const oeeEl = document.getElementById('bottleneck-oee');
+    const feedContainer = document.getElementById('bottleneck-events-feed');
+    const shareBadge = document.getElementById('bottleneck-share-badge');
+
+    // Filtrujemy tylko usterki oczekujące (bez przypisanego CAPA)
+    const pendingEvents = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS");
+
+    // Jeśli brak zdarzeń z terminala, używamy danych domyślnych dla G-01
+    if (pendingEvents.length === 0) {
+        if (capaHistory.some(c => c.machineId === 0)) {
+            // Jeśli G-01 ma już wdrożone CAPA, promujemy G-02
+            renderBottleneckMachine(1, "Laser BLM Tube", "G-02", 36, 2700, "65.4%", "26% strat ciągu", []);
+        } else {
+            renderBottleneckMachine(0, "Laser BLM Płytowy CNC", "G-01", 51, 3825, "62.6%", "68% strat ciągu", [
+                { fault: "BLM_JAM: Zablokowany stół urobku", min: 51, note: "Pisk prowadnicy osi Y i zakleszczony ażur" }
+            ]);
+        }
+        return;
+    }
+
+    // Agregacja minut przestoju per maszyna
+    const stationLosses = {};
+    pendingEvents.forEach(ev => {
+        const id = ev.machineId;
+        if (!stationLosses[id]) {
+            stationLosses[id] = { id: id, name: ev.machineName, code: ev.stationCode || 'G-01', totalMin: 0, totalCost: 0, events: [] };
+        }
+        stationLosses[id].totalMin += ev.durationMin;
+        stationLosses[id].totalCost += ev.costTotalPLN;
+        stationLosses[id].events.push(ev);
+    });
+
+    const sortedStations = Object.values(stationLosses).sort((a, b) => b.totalMin - a.totalMin);
+    const topBottleneck = sortedStations[0];
+
+    const targetMachineObj = machineFleet.find(m => m.id === topBottleneck.id);
+    const oeeVal = targetMachineObj ? `${targetMachineObj.oee}%` : "62.6%";
+    const sharePct = Math.round((topBottleneck.totalMin / Math.max(1, productionState.totalDowntimeMin)) * 100);
+
+    renderBottleneckMachine(
+        topBottleneck.id,
+        topBottleneck.name,
+        topBottleneck.code,
+        topBottleneck.totalMin,
+        topBottleneck.totalCost,
+        oeeVal,
+        `${sharePct}% strat ciągu`,
+        topBottleneck.events.slice(0, 2).map(e => ({ fault: `${e.faultCode}: ${e.faultDescription}`, min: e.durationMin, note: e.operatorNote }))
+    );
+}
+
+function renderBottleneckMachine(id, name, code, mins, cost, oee, share, eventsList) {
+    const nameEl = document.getElementById('bottleneck-machine-name');
+    const tagEl = document.getElementById('bottleneck-station-tag');
+    const durEl = document.getElementById('bottleneck-duration');
+    const costEl = document.getElementById('bottleneck-cost');
+    const oeeEl = document.getElementById('bottleneck-oee');
+    const shareBadge = document.getElementById('bottleneck-share-badge');
+    const feedContainer = document.getElementById('bottleneck-events-feed');
+
+    if (nameEl) nameEl.innerText = name;
+    if (tagEl) tagEl.innerText = code;
+    if (durEl) durEl.innerText = `${mins} min`;
+    if (costEl) costEl.innerText = `${cost.toLocaleString('pl-PL')} PLN`;
+    if (oeeEl) oeeEl.innerText = oee;
+    if (shareBadge) shareBadge.innerText = share;
+
+    if (feedContainer) {
+        if (eventsList.length === 0) {
+            feedContainer.innerHTML = `<div class="p-2.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs text-slate-400">Brak nierozwiązanych awarii dla tego gniazda.</div>`;
+        } else {
+            feedContainer.innerHTML = eventsList.map(ev => `
+                <div class="p-2.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs">
+                    <div class="flex justify-between font-bold text-rose-300">
+                        <span class="truncate">${ev.fault}</span>
+                        <span class="font-mono-numbers ml-2">${ev.min} min</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1 italic font-medium truncate">"${ev.note}"</p>
+                </div>
+            `).join('');
+        }
+    }
+}
+
+function analyzeActiveBottleneckInCapa() {
+    const nameEl = document.getElementById('bottleneck-machine-name').innerText;
+    const durEl = document.getElementById('bottleneck-duration').innerText;
+    
+    switchTab('capa');
+    document.getElementById('capa-station-code').innerText = `GNIAZDO: ${nameEl}`;
+    document.getElementById('capa-fault-headline').innerText = `Analiza wąskiego gardła: Przestój ${durEl}`;
+    document.getElementById('capa-human-input').value = `Sztab kryzysowy: Weryfikacja gniazda ${nameEl}.`;
+}
+
+// 7. Kolejka Push-Pull Drawer
 function toggleNotificationDrawer() {
     const drawer = document.getElementById('notification-drawer');
     if (!drawer) return;
@@ -183,7 +314,7 @@ function toggleNotificationDrawer() {
 }
 
 function updateNotificationBadge() {
-    const count = incomingEventsQueue.length;
+    const count = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS").length;
     const badge = document.getElementById('bell-counter-badge');
     const drawerCount = document.getElementById('drawer-count-badge');
 
@@ -202,7 +333,9 @@ function renderDrawerEvents() {
     const container = document.getElementById('drawer-events-list');
     if (!container) return;
 
-    if (incomingEventsQueue.length === 0) {
+    const pending = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS");
+
+    if (pending.length === 0) {
         container.innerHTML = `
             <div class="p-8 text-center text-slate-400 text-xs">
                 Brak oczekujących zdarzeń w kolejce. Wszystkie meldunki zostały obsłużone.
@@ -212,13 +345,13 @@ function renderDrawerEvents() {
     }
 
     container.innerHTML = '';
-    incomingEventsQueue.forEach((ev, idx) => {
+    pending.forEach((ev, idx) => {
         const card = document.createElement('div');
-        card.className = "p-4 rounded-xl bg-graphite-900 border-2 border-graphite-750 hover:border-gold-500/60 transition space-y-2.5 shadow-md";
+        card.className = "p-4 rounded-xl bg-graphite-950 border-2 border-graphite-750 hover:border-gold-500/60 transition space-y-2.5 shadow-md";
         card.innerHTML = `
             <div class="flex justify-between items-start">
                 <span class="text-[10px] font-mono-numbers font-extrabold px-2 py-0.5 rounded bg-gold-500/20 text-gold-400 border border-gold-500/40 uppercase">
-                    ${ev.source} #${ev.eventId}
+                    ${ev.source} #${ev.eventId || (idx + 1)}
                 </span>
                 <span class="text-[11px] text-slate-400 font-mono-numbers">${ev.receivedAt}</span>
             </div>
@@ -229,7 +362,7 @@ function renderDrawerEvents() {
             </div>
             <div class="pt-2 border-t border-graphite-750 flex items-center justify-between text-xs">
                 <span class="font-mono-numbers text-rose-400 font-bold">${ev.durationMin} min (-${ev.costTotalPLN} PLN)</span>
-                <button onclick="pullSpecificEventToCapa(${idx})" class="px-3 py-1.5 rounded-lg bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-[11px] transition shadow flex items-center gap-1">
+                <button onclick="pullSpecificEventToCapa(${idx})" class="px-3.5 py-1.5 rounded-lg bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-[11px] transition shadow flex items-center gap-1">
                     Pobierz do 5-Why &rarr;
                 </button>
             </div>
@@ -240,13 +373,16 @@ function renderDrawerEvents() {
 
 function clearEventBuffer() {
     incomingEventsQueue = [];
+    savePersistentStorage();
     updateNotificationBadge();
     renderDrawerEvents();
+    recalculateBottleneckWidget();
 }
 
-// 5. Zasada Pull: Pobranie zdarzenia do modułu 5-Why
+// 8. Pobranie zdarzenia do Sztabu 5-Why
 function pullLatestEventToCapa() {
-    if (incomingEventsQueue.length === 0) {
+    const pending = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS");
+    if (pending.length === 0) {
         alert("Kolejka jest pusta. Oczekiwanie na meldunki z terminala shop-floor.");
         return;
     }
@@ -261,26 +397,14 @@ function pullSpecificEventToCapa(index) {
     toggleNotificationDrawer();
     switchTab('capa');
 
-    // Aktualizacja nagłówka zdarzenia w Sztabie 5-Why
-    const stCode = document.getElementById('capa-station-code');
-    const fHeadline = document.getElementById('capa-fault-headline');
-    const opMeta = document.getElementById('capa-operator-meta');
-    const costTag = document.getElementById('capa-cost-tag');
-    const inputArea = document.getElementById('capa-human-input');
-
-    if (stCode) stCode.innerText = `GNIAZDO: ${ev.stationCode || 'G-01'} (${ev.machineName})`;
-    if (fHeadline) fHeadline.innerText = ev.faultDescription;
-    if (opMeta) opMeta.innerHTML = `Zgłaszający: <strong class="text-white">${ev.operatorName}</strong> | Czas trwania: <strong class="text-rose-400 font-mono-numbers">${ev.durationMin} min</strong> | Źródło: ${ev.source}`;
-    if (costTag) costTag.innerText = `-${ev.costTotalPLN.toLocaleString('pl-PL')} PLN`;
-    if (inputArea) inputArea.value = `[Zgłoszenie ${ev.source} / ${ev.operatorName}]: ${ev.operatorNote}`;
-
-    // Usunięcie obsłużonego zdarzenia z kolejki
-    incomingEventsQueue.splice(index, 1);
-    updateNotificationBadge();
-    renderDrawerEvents();
+    document.getElementById('capa-station-code').innerText = `GNIAZDO: ${ev.stationCode || 'G-01'} (${ev.machineName})`;
+    document.getElementById('capa-fault-headline').innerText = ev.faultDescription;
+    document.getElementById('capa-operator-meta').innerHTML = `Zgłaszający: <strong class="text-white">${ev.operatorName}</strong> | Czas: <strong class="text-rose-400 font-mono-numbers">${ev.durationMin} min</strong> | Źródło: ${ev.source}`;
+    document.getElementById('capa-cost-tag').innerText = `-${ev.costTotalPLN.toLocaleString('pl-PL')} PLN`;
+    document.getElementById('capa-human-input').value = `[Zgłoszenie ${ev.source} / ${ev.operatorName}]: ${ev.operatorNote}`;
 }
 
-// 6. Sztab Decyzyjny 5-Why, Gemini Asysta & Manager Override
+// 9. Sztab Decyzyjny 5-Why, Gemini AI & Manager Override
 function injectPresetPrompt(type) {
     const input = document.getElementById('capa-human-input');
     if (!input) return;
@@ -316,7 +440,7 @@ function triggerCapaAnalysis() {
     if (window.lucide) lucide.createIcons();
 
     area.innerHTML = `
-        <div class="bg-graphite-900 p-6 rounded-2xl border-2 border-graphite-750 space-y-4">
+        <div class="bg-graphite-950 p-6 rounded-2xl border-2 border-graphite-750 space-y-4">
             <div class="flex items-center justify-between text-xs font-bold">
                 <span id="capa-thought-status" class="text-gold-400 flex items-center gap-2">
                     <span class="w-2.5 h-2.5 rounded-full bg-gold-400 animate-ping"></span>
@@ -324,7 +448,7 @@ function triggerCapaAnalysis() {
                 </span>
                 <span class="font-mono-numbers text-slate-300">Gemini 2.5 Multi-Agent</span>
             </div>
-            <div class="w-full bg-graphite-850 h-3 rounded-full overflow-hidden border border-graphite-700">
+            <div class="w-full bg-graphite-900 h-3 rounded-full overflow-hidden border border-graphite-750">
                 <div id="capa-progress-bar" class="bg-gradient-to-r from-gold-500 to-amber-400 h-full transition-all duration-700" style="width: 25%"></div>
             </div>
         </div>
@@ -350,7 +474,7 @@ function triggerCapaAnalysis() {
             isHalLocked = true;
             setHalGlobalStatus();
             area.innerHTML = `
-                <div class="p-6 rounded-2xl bg-gradient-to-br from-rose-950/80 via-graphite-900 to-graphite-900 border-[3px] border-rose-500 shadow-2xl space-y-4">
+                <div class="p-6 rounded-2xl bg-gradient-to-br from-rose-950/80 via-graphite-950 to-graphite-950 border-[3px] border-rose-500 shadow-2xl space-y-4">
                     <div class="flex items-center gap-4">
                         <div class="w-14 h-14 rounded-full bg-rose-600 flex items-center justify-center hal-eye-glow flex-shrink-0 border-2 border-white">
                             <div class="w-4 h-4 rounded-full bg-white"></div>
@@ -362,7 +486,7 @@ function triggerCapaAnalysis() {
                             <h3 class="text-base font-bold text-white mt-1">Blokada Procedury Operacyjnej</h3>
                         </div>
                     </div>
-                    <div class="p-4 bg-graphite-950/90 rounded-xl border border-rose-900 font-mono-numbers text-xs text-rose-200 leading-relaxed space-y-2">
+                    <div class="p-4 bg-graphite-950 rounded-xl border border-rose-900 font-mono-numbers text-xs text-rose-200 leading-relaxed space-y-2">
                         <p class="text-sm font-bold text-rose-300">„Przykro mi, Grzegorzu. Obawiam się, że nie mogę tego zrobić...</p>
                         <p>Wykryłem błąd ludzki w module podawania blachy na laserze BLM, a ten proces jest zbyt ważny, by ryzykować kolizję głowicy.”</p>
                     </div>
@@ -379,8 +503,6 @@ function triggerCapaAnalysis() {
 }
 
 function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
-    const noteText = humanNote || "Brak uwag z hali.";
-    
     area.innerHTML = `
         ${afterHal ? `
             <div class="p-3.5 bg-emerald-500/20 border-2 border-emerald-500/50 rounded-xl text-xs text-emerald-200 flex items-center justify-between font-medium">
@@ -393,55 +515,55 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
             <h4 class="text-xs font-extrabold text-gold-400 uppercase tracking-wider flex items-center gap-2">
                 <i data-lucide="git-commit" class="w-4 h-4"></i> Wygenerowana Kaskada Przyczynowa 5-Why:
             </h4>
-            <button onclick="toggleOverrideMode()" id="btn-toggle-override" class="px-3.5 py-1.5 rounded-lg bg-graphite-800 hover:bg-graphite-750 text-slate-200 border border-graphite-600 text-xs font-bold transition flex items-center gap-1.5">
+            <button onclick="toggleOverrideMode()" id="btn-toggle-override" class="px-3.5 py-1.5 rounded-lg bg-graphite-850 hover:bg-graphite-800 text-slate-200 border border-graphite-600 text-xs font-bold transition flex items-center gap-1.5">
                 <i data-lucide="edit-3" class="w-3.5 h-3.5 text-gold-400"></i> Tryb Nadpisania (Manager Override)
             </button>
         </div>
 
         <div class="space-y-3" id="why-cascade-container">
-            <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+            <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W1:</span>
                 <div class="flex-1">
                     <p class="text-slate-200 font-bold">Dlaczego nastąpiło zatrzymanie maszyny?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-850 focus:border focus:border-gold-500 rounded p-1" readonly>Zadziałał czujnik przeciążenia napędu stołu odbiorczego urobku.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Zadziałał czujnik przeciążenia napędu stołu odbiorczego urobku.</textarea>
                 </div>
             </div>
 
-            <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+            <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W2:</span>
                 <div class="flex-1">
                     <p class="text-slate-200 font-bold">Dlaczego stół uległ mechanicznemu przeciążeniu?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-850 focus:border focus:border-gold-500 rounded p-1" readonly>Ażur z blachy zakleszczył się między rusztem a trawersą wygarniacza.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Ażur z blachy zakleszczył się między rusztem a trawersą wygarniacza.</textarea>
                 </div>
             </div>
 
-            <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+            <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W3:</span>
                 <div class="flex-1">
                     <p class="text-slate-200 font-bold">Dlaczego ażur uległ zakleszczeniu w rusztach?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-850 focus:border focus:border-gold-500 rounded p-1" readonly>Wzmocnienia naroży opadły pod kątem z powodu braku mikromostków i naprężeń w arkuszu.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Wzmocnienia naroży opadły pod kątem z powodu braku mikromostków i naprężeń w arkuszu.</textarea>
                 </div>
             </div>
 
-            <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+            <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W4:</span>
                 <div class="flex-1">
                     <p class="text-slate-200 font-bold">Dlaczego pominięto mikromostki w nestingach?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-850 focus:border focus:border-gold-500 rounded p-1" readonly>Operator CAM dążył do wyeliminowania ręcznego wybijania detali młotkiem na rozładunku.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Operator CAM dążył do wyeliminowania ręcznego wybijania detali młotkiem na rozładunku.</textarea>
                 </div>
             </div>
 
-            <div class="p-4 rounded-xl bg-graphite-900 border-2 border-gold-500/60 text-xs flex gap-3.5 bg-gold-500/10">
+            <div class="p-4 rounded-xl bg-graphite-950 border-2 border-gold-500/60 text-xs flex gap-3.5 bg-gold-500/10">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-base">W5:</span>
                 <div class="flex-1">
                     <p class="text-gold-300 font-extrabold">Przyczyna Źródłowa (Root Cause):</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-100 font-medium mt-0.5 focus:bg-graphite-850 focus:border focus:border-gold-500 rounded p-1" readonly>Brak ustandaryzowanego SOP określającego minimalną sztywność ażuru przy cięciu arkuszy o grubości powyżej 6.0 mm.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-100 font-medium mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Brak ustandaryzowanego SOP określającego minimalną sztywność ażuru przy cięciu arkuszy o grubości powyżej 6.0 mm.</textarea>
                 </div>
             </div>
         </div>
 
-        <!-- Propozycja Zadania CAPA -->
-        <div class="p-5 rounded-2xl bg-graphite-900 border-2 border-emerald-500/50 space-y-3">
+        <!-- Zadanie CAPA -->
+        <div class="p-5 rounded-2xl bg-graphite-950 border-2 border-emerald-500/50 space-y-3">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2 text-emerald-400 text-xs font-extrabold uppercase">
                     <i data-lucide="shield-check" class="w-5 h-5"></i> Zadanie Korygująco-Zapobiegawcze (CAPA):
@@ -451,7 +573,7 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
                 </span>
             </div>
             
-            <textarea id="capa-task-text" rows="2" class="w-full bg-graphite-850 border border-graphite-700 rounded-xl p-3 text-xs text-white leading-relaxed focus:outline-none focus:border-emerald-500 font-sans" readonly>Wdrożenie obowiązkowych mikromostków 0.8 mm w oprogramowaniu CAM dla blach &ge; 6 mm oraz standaryzacja wózka buforowego na ażury przy stole rozładunku.</textarea>
+            <textarea id="capa-task-text" rows="2" class="w-full bg-graphite-900 border border-graphite-700 rounded-xl p-3 text-xs text-white leading-relaxed focus:outline-none focus:border-emerald-500 font-sans" readonly>Wdrożenie obowiązkowych mikromostków 0.8 mm w oprogramowaniu CAM dla blach &ge; 6 mm oraz standaryzacja wózka buforowego na ażury przy stole rozładunku.</textarea>
 
             <div class="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
                 <span class="text-slate-300">Wykonawca: <strong class="text-white">Główny Technolog / Utrzymanie Ruchu</strong></span>
@@ -460,7 +582,7 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
                         Wyczyść i Wpisz Własną Decyzję
                     </button>
                     <button onclick="confirmCapaDecision()" class="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-md">
-                        Zatwierdź Zadanie CAPA
+                        Zatwierdź Zadanie CAPA i Zdejmij Maszynę &rarr;
                     </button>
                 </div>
             </div>
@@ -469,7 +591,7 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
     if (window.lucide) lucide.createIcons();
 }
 
-// 7. Obsługa Manager Override (Pełna kontrola człowieka)
+// 10. Manager Override & Zatwierdzenie Zadania CAPA (Rotacja Wąskiego Gardła)
 let isOverrideActive = false;
 
 function toggleOverrideMode() {
@@ -491,7 +613,7 @@ function toggleOverrideMode() {
         }
         inputs.forEach(input => input.removeAttribute('readonly'));
     } else {
-        btn.className = "px-3.5 py-1.5 rounded-lg bg-graphite-800 hover:bg-graphite-750 text-slate-200 border border-graphite-600 text-xs font-bold transition flex items-center gap-1.5";
+        btn.className = "px-3.5 py-1.5 rounded-lg bg-graphite-850 hover:bg-graphite-800 text-slate-200 border border-graphite-600 text-xs font-bold transition flex items-center gap-1.5";
         btn.innerHTML = `<i data-lucide="edit-3" class="w-3.5 h-3.5 text-gold-400"></i> Tryb Nadpisania (Manager Override)`;
         if (wipeBtn) wipeBtn.classList.add('hidden');
         if (taskInput) taskInput.setAttribute('readonly', 'true');
@@ -509,9 +631,87 @@ function clearAndOverrideCapa() {
     }
 }
 
+// ZATWIERDZENIE CAPA: ZDJĘCIE MASZYNY Z WĄSKIEGO GARDŁA I PROMOCJA KOLEJNEJ
 function confirmCapaDecision() {
+    const taskText = document.getElementById('capa-task-text').value;
     const origin = isOverrideActive ? "Zatwierdzono przez Menedżera (Manual Override)" : "Zatwierdzono na bazie analizy AI";
-    alert(`Zadanie CAPA zostało zarejestrowane w rejestrze UR.\nStatus: ${origin}`);
+
+    const targetMachineId = activeIncidentContext ? activeIncidentContext.machineId : 0;
+    const targetMachineName = activeIncidentContext ? activeIncidentContext.machineName : "Laser BLM Płytowy";
+
+    // 1. Oznaczenie zdarzenia w buforze jako obsłużone
+    if (activeIncidentContext) {
+        activeIncidentContext.status = "CAPA_ASSIGNED";
+    }
+
+    // Oznaczamy wszystkie oczekujące usterki dla tej maszyny jako zabezpieczone
+    incomingEventsQueue.forEach(ev => {
+        if (ev.machineId === targetMachineId) {
+            ev.status = "CAPA_ASSIGNED";
+        }
+    });
+
+    // 2. Dodanie do Rejestru Historii CAPA
+    capaHistory.unshift({
+        machineId: targetMachineId,
+        machineName: targetMachineName,
+        task: taskText,
+        origin: origin,
+        timestamp: new Date().toLocaleTimeString().slice(0, 5),
+        rootCause: "Brak ustandaryzowanego SOP minimalnej sztywności ażuru"
+    });
+
+    savePersistentStorage();
+    updateNotificationBadge();
+    renderDrawerEvents();
+
+    // 3. Rekalibracja wąskiego gardła (Zdejmuje obecną maszynę i promuje kolejną)
+    recalculateBottleneckWidget();
+
+    alert(`Raport CAPA dla ${targetMachineName} został formalnie wyemitowany do UR.\nMaszyna zdjęta z aktywnego wąskiego gardła.`);
+    switchTab('dashboard');
+}
+
+// 11. Modal Historii Wdrożonych Zadań CAPA
+function toggleCapaHistoryModal() {
+    const modal = document.getElementById('capa-history-modal');
+    if (!modal) return;
+    const isHidden = modal.classList.contains('hidden');
+
+    if (isHidden) {
+        renderCapaHistoryList();
+        modal.classList.remove('hidden');
+    } else {
+        modal.classList.add('hidden');
+    }
+}
+
+function renderCapaHistoryList() {
+    const container = document.getElementById('capa-history-list');
+    if (!container) return;
+
+    if (capaHistory.length === 0) {
+        container.innerHTML = `
+            <div class="p-8 text-center text-slate-400 text-xs">
+                Brak zamkniętych zadań CAPA w bieżącej zmianie.
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = capaHistory.map(c => `
+        <div class="p-4 rounded-xl bg-graphite-950 border-2 border-emerald-500/40 space-y-2 shadow-md">
+            <div class="flex justify-between items-start">
+                <span class="text-xs font-bold text-white uppercase">${c.machineName}</span>
+                <span class="text-[11px] font-mono-numbers text-slate-400">${c.timestamp}</span>
+            </div>
+            <p class="text-xs text-emerald-300 font-semibold">${c.task}</p>
+            <div class="pt-2 border-t border-graphite-750 flex justify-between items-center text-[11px]">
+                <span class="text-slate-400">${c.rootCause}</span>
+                <span class="font-mono-numbers font-bold text-gold-400">${c.origin}</span>
+            </div>
+        </div>
+    `).join('');
 }
 
 function setHalGlobalStatus() {
@@ -532,7 +732,7 @@ function restoreGlobalAiStatus() {
     if (text) text.innerText = "Gemini 2.5: Aktywny";
 }
 
-// 8. Tabela Parku Maszynowego i Modale
+// 12. Tabela Parku Maszynowego i Modale
 function renderMachines() {
     const container = document.getElementById('machines-container');
     if (!container) return;
@@ -541,7 +741,7 @@ function renderMachines() {
 
     list.forEach(m => {
         const row = document.createElement('div');
-        row.className = "p-5 md:px-6 md:py-4 flex flex-col md:grid md:grid-cols-12 items-start md:items-center gap-3 md:gap-0 hover:bg-graphite-800/80 transition cursor-pointer";
+        row.className = "p-5 md:px-6 md:py-4 flex flex-col md:grid md:grid-cols-12 items-start md:items-center gap-3 md:gap-0 hover:bg-graphite-850/80 transition cursor-pointer";
         row.onclick = () => openMachineModal(m.id);
 
         row.innerHTML = `
@@ -592,7 +792,7 @@ function toggleAllMachines() {
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.className = "nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition";
+        btn.className = "nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition";
     });
 
     const activeTab = document.getElementById(`tab-${tabId}`);
@@ -608,7 +808,7 @@ function switchTab(tabId) {
 
 function setShift(shift) {
     document.querySelectorAll('.shift-btn').forEach(b => {
-        b.className = "shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition";
+        b.className = "shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 font-mono-numbers transition";
     });
     const active = document.getElementById(`shift-btn-${shift}`);
     if (active) active.className = "shift-btn px-4 py-2 rounded-lg text-xs font-extrabold bg-gold-500 text-graphite-950 font-mono-numbers shadow transition";
@@ -633,7 +833,7 @@ function openMachineModal(id) {
         telemetryBox.innerHTML = '';
         m.telemetry.forEach(t => {
             const item = document.createElement('div');
-            item.className = "p-3 rounded-xl bg-graphite-850 border border-graphite-750 flex justify-between items-center";
+            item.className = "p-3 rounded-xl bg-graphite-900 border border-graphite-750 flex justify-between items-center";
             item.innerHTML = `<span class="text-slate-300 font-medium">${t.label}:</span> <strong class="text-gold-300 font-mono-numbers font-bold">${t.val}</strong>`;
             telemetryBox.appendChild(item);
         });
@@ -665,7 +865,7 @@ function jumpToCapaFromModal() {
     }
 }
 
-// 9. Audyt 5S i Symulator What-If
+// 13. Audyt 5S i Symulator What-If
 const stationAudits = {
     ws_weld: {
         title: "Spawanie Manualne MIG/MAG (Stanowisko S-02)",
@@ -730,7 +930,7 @@ function loadStationAudit() {
     const humanNote = document.getElementById('audit-human-notes') ? document.getElementById('audit-human-notes').value : '';
 
     container.innerHTML = `
-        <div class="lg:col-span-5 bg-graphite-900 p-6 rounded-2xl border border-graphite-750 space-y-5">
+        <div class="lg:col-span-5 bg-graphite-950 p-6 rounded-2xl border border-graphite-750 space-y-5">
             <div class="flex justify-between items-start">
                 <div>
                     <span class="text-xs uppercase text-slate-300 font-bold block">Ocena Końcowa 5S Stanowiska</span>
@@ -765,23 +965,23 @@ function loadStationAudit() {
                 </div>
             </div>
 
-            <div class="p-4 bg-graphite-850 rounded-xl border border-graphite-750 text-xs">
+            <div class="p-4 bg-graphite-900 rounded-xl border border-graphite-750 text-xs">
                 <span class="text-gold-400 font-extrabold block mb-1">Rekomendowane Działanie CAPA (AI):</span>
                 <p class="text-slate-200 leading-relaxed">${data.capa}</p>
             </div>
         </div>
 
-        <div class="lg:col-span-7 bg-graphite-900 p-6 rounded-2xl border border-graphite-750 flex flex-col justify-between">
+        <div class="lg:col-span-7 bg-graphite-950 p-6 rounded-2xl border border-graphite-750 flex flex-col justify-between">
             <div>
                 <div class="flex justify-between items-center mb-3">
                     <span class="text-xs font-bold text-white flex items-center gap-2">
                         <i data-lucide="eye" class="w-4 h-4 text-gold-400"></i> Analiza Klatki Obrazu (Gemini Vision 2.5)
                     </span>
-                    <span class="text-xs font-mono-numbers text-slate-300 bg-graphite-850 px-2.5 py-1 rounded-md border border-graphite-700">Skan z kamery przemysłowej</span>
+                    <span class="text-xs font-mono-numbers text-slate-300 bg-graphite-900 px-2.5 py-1 rounded-md border border-graphite-750">Skan z kamery przemysłowej</span>
                 </div>
 
-                <div class="w-full h-48 bg-graphite-950 rounded-xl border-2 border-graphite-700 relative overflow-hidden flex items-center justify-center p-4">
-                    <div class="absolute inset-0 bg-[radial-gradient(#384359_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
+                <div class="w-full h-48 bg-graphite-900 rounded-xl border-2 border-graphite-700 relative overflow-hidden flex items-center justify-center p-4">
+                    <div class="absolute inset-0 bg-[radial-gradient(#38465e_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
                     
                     <div class="border-2 border-amber-400 bg-amber-500/15 p-3 rounded-xl text-xs text-amber-200 max-w-sm z-10 shadow-xl text-center backdrop-blur-md">
                         <i data-lucide="scan-line" class="w-6 h-6 mx-auto mb-1 text-amber-400"></i>
@@ -793,7 +993,7 @@ function loadStationAudit() {
 
                 <div class="mt-4 space-y-2.5">
                     ${data.observations.map(o => `
-                        <div class="p-3 rounded-xl bg-graphite-850 border border-graphite-750 text-xs flex justify-between items-center font-medium">
+                        <div class="p-3 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex justify-between items-center font-medium">
                             <span class="text-slate-200">${o.text}</span>
                             <span class="font-mono-numbers font-extrabold text-xs ${o.pen.includes('-') ? 'text-rose-400' : 'text-emerald-400'}">${o.pen}</span>
                         </div>
@@ -802,7 +1002,7 @@ function loadStationAudit() {
             </div>
 
             <div class="mt-5 pt-3.5 border-t border-graphite-750 flex justify-end">
-                <button onclick="alert('Raport audytu 5S wyeksportowany do formatu PDF.')" class="px-5 py-2.5 bg-graphite-800 hover:bg-graphite-750 text-xs font-bold text-slate-100 border border-graphite-600 rounded-xl transition flex items-center gap-2">
+                <button onclick="alert('Raport audytu 5S wyeksportowany do formatu PDF.')" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-100 border border-graphite-600 rounded-xl transition flex items-center gap-2">
                     <i data-lucide="download" class="w-4 h-4 text-gold-400"></i> Eksportuj Raport Audytu (PDF)
                 </button>
             </div>
@@ -821,7 +1021,7 @@ function triggerVisionAudit() {
     if (window.lucide) lucide.createIcons();
 
     container.innerHTML = `
-        <div class="col-span-12 bg-graphite-900 p-14 rounded-2xl border border-graphite-750 text-center space-y-4">
+        <div class="col-span-12 bg-graphite-950 p-14 rounded-2xl border border-graphite-750 text-center space-y-4">
             <div class="w-14 h-14 rounded-full border-4 border-gold-400 border-t-transparent animate-spin mx-auto"></div>
             <div class="space-y-1.5">
                 <h4 class="text-base font-bold text-white">Segmentacja Obrazu i Weryfikacja Wytycznych Audytora...</h4>
@@ -859,14 +1059,14 @@ function showToastNotification(payload) {
     if (!container) return;
 
     const toast = document.createElement('div');
-    toast.className = "toast-animate bg-graphite-850 border-2 border-gold-500 p-4 rounded-2xl shadow-2xl flex items-start gap-3 pointer-events-auto";
+    toast.className = "toast-animate bg-graphite-900 border-2 border-gold-500 p-4 rounded-2xl shadow-2xl flex items-start gap-3 pointer-events-auto";
     toast.innerHTML = `
         <div class="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-400 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
             <i data-lucide="bell-ring" class="w-5 h-5"></i>
         </div>
         <div class="flex-1">
             <div class="flex justify-between items-center">
-                <span class="text-[11px] font-mono-numbers font-bold text-gold-400 uppercase">${payload.source} #${payload.eventId}</span>
+                <span class="text-[11px] font-mono-numbers font-bold text-gold-400 uppercase">${payload.source} #${payload.eventId || 1}</span>
                 <span class="text-[10px] text-slate-400 font-mono-numbers">Transmisja: +2.0s</span>
             </div>
             <h4 class="text-xs font-bold text-white mt-0.5">${payload.faultDescription}</h4>
