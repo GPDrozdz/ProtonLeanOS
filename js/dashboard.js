@@ -1,6 +1,6 @@
 /**
- * Proton Lean OS - Executive Dashboard Logic (v2.6)
- * Trwałość planu (20 palet / 5 kontenerów), rotacja wąskiego gardła (G-01 -> G-02 -> G-09) i reset symulacji.
+ * Proton Lean OS - Executive Dashboard Logic (v2.7)
+ * Płynna 3-sekundowa animacja startowa HUD, trwałość stanu (20 palet), rotacja wąskiego gardła i twardy reset.
  */
 
 const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v26';
@@ -105,6 +105,9 @@ async function initDashboard() {
     recalculateBottleneckWidget();
     startBackgroundProductionTicker();
 
+    // Uruchomienie 3-sekundowej animacji narastania wykresów HUD
+    animateHudRingsOnStartup();
+
     if (window.lucide) lucide.createIcons();
 
     // Rejestracja magistrali zdarzeń
@@ -113,7 +116,36 @@ async function initDashboard() {
     }
 }
 
-// 2. Obsługa localStorage (Trwałość danych)
+// 2. 3-sekundowa Animacja Startowa Wykresów Pierścieniowych HUD
+function animateHudRingsOnStartup() {
+    setTimeout(() => {
+        // Pierścień A (Dostępność: 78.4% -> luka: 58.4 z 270.2)
+        const ringA = document.getElementById('oee-ring-a');
+        if (ringA) ringA.style.strokeDashoffset = "58.4";
+
+        // Pierścień P (Wydajność: 89.2% -> luka: 23.1 z 213.6)
+        const ringP = document.getElementById('oee-ring-p');
+        if (ringP) ringP.style.strokeDashoffset = "23.1";
+
+        // Pierścień Q (Jakość: 98.6% -> luka: 2.2 z 157.1)
+        const ringQ = document.getElementById('oee-ring-q');
+        if (ringQ) ringQ.style.strokeDashoffset = "2.2";
+
+        // Pierścień Realizacji Planu Zlecenia (r=40, obwód=251.3)
+        const donutPlan = document.getElementById('donut-plan-circle');
+        if (donutPlan) {
+            const palletsPct = (productionState.palletsDone / productionState.palletsTarget) * 100;
+            const containersPct = (productionState.containersDone / productionState.containersTarget) * 100;
+            const totalFulfillment = parseFloat(((palletsPct * 0.6) + (containersPct * 0.4)).toFixed(1));
+            
+            const circumference = 251.3;
+            const targetOffset = circumference - (Math.min(100, totalFulfillment) / 100) * circumference;
+            donutPlan.style.strokeDashoffset = targetOffset;
+        }
+    }, 100);
+}
+
+// 3. Obsługa localStorage (Trwałość danych)
 function loadPersistentStorage() {
     try {
         const storedQueue = localStorage.getItem(STORAGE_KEY_QUEUE);
@@ -156,7 +188,7 @@ function resetFactorySimulationState() {
     }
 }
 
-// 3. Automatyczny Takt Produkcji (~2 palety na minutę w tle)
+// 4. Automatyczny Takt Produkcji (~2 palety na minutę w tle)
 function startBackgroundProductionTicker() {
     setInterval(() => {
         if (productionState.palletsDone < productionState.palletsTarget) {
@@ -168,7 +200,7 @@ function startBackgroundProductionTicker() {
     }, 30000);
 }
 
-// 4. Odbiór meldunku z magistrali (Zasada Push)
+// 5. Odbiór meldunku z magistrali (Zasada Push)
 function handleIncomingTelemetry(payload) {
     if (!payload) return;
 
@@ -201,7 +233,7 @@ function handleIncomingTelemetry(payload) {
     showToastNotification(payload);
 }
 
-// 5. Przeliczanie matematyczne wykonania planu & Wykresy Kołowe
+// 6. Przeliczanie matematyczne wykonania planu & Wykresy Kołowe
 function recalculateProductionImpact(payload) {
     const mins = payload.durationMin || 10;
     productionState.totalLossPLN += payload.costTotalPLN;
@@ -261,7 +293,7 @@ function updateProductionMetricsUI() {
     if (totalLossEl) totalLossEl.innerText = `${productionState.totalLossPLN.toLocaleString('pl-PL')} PLN`;
     if (summaryPercentEl) summaryPercentEl.innerText = `${totalFulfillment}%`;
 
-    // Wykres pierścieniowy Sharp SVG wykonania planu (r=40, obwód=251.3)
+    // Aktualizacja pierścienia realizacji planu
     const donutCircle = document.getElementById('donut-plan-circle');
     const donutText = document.getElementById('donut-plan-text');
     if (donutCircle && donutText) {
@@ -271,23 +303,19 @@ function updateProductionMetricsUI() {
         donutText.innerText = `${totalFulfillment}%`;
     }
 
-    // Licznik w wykresie Pareto
+    // Licznik Pareto
     const paretoMinutes = document.getElementById('donut-pareto-minutes');
     const paretoTotal = document.getElementById('pareto-total-time');
     if (paretoMinutes) paretoMinutes.innerText = productionState.totalDowntimeMin;
     if (paretoTotal) paretoTotal.innerText = `Suma: ${productionState.totalDowntimeMin} min strat`;
 }
 
-// 6. Rotacja Krytycznego Wąskiego Gardła (Dynamic Bottleneck Shifting)
+// 7. Rotacja Krytycznego Wąskiego Gardła (Dynamic Bottleneck Shifting)
 function recalculateBottleneckWidget() {
-    // 1. Sprawdzamy maszyny, które mają już wdrożone CAPA
     const resolvedMachineIds = capaHistory.map(c => c.machineId);
-
-    // 2. Szukamy zdarzeń w toku z kolejki (live feed)
     const pendingEvents = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS" && !resolvedMachineIds.includes(ev.machineId));
 
     if (pendingEvents.length > 0) {
-        // Agregacja zdarzeń na żywo
         const stationLosses = {};
         pendingEvents.forEach(ev => {
             const id = ev.machineId;
@@ -318,7 +346,7 @@ function recalculateBottleneckWidget() {
         return;
     }
 
-    // 3. Fallback do hierarchii fabrycznej: promujemy pierwszą maszynę, która NIE ma zatwierdzonego CAPA
+    // Promocja kolejnej maszyny bez zatwierdzonego CAPA (G-01 -> G-02 -> G-09)
     const candidate = DEFAULT_BOTTLENECK_FLEET.find(m => !resolvedMachineIds.includes(m.id));
 
     if (candidate) {
@@ -333,7 +361,6 @@ function recalculateBottleneckWidget() {
             candidate.events
         );
     } else {
-        // Wszystkie maszyny zabezpieczone CAPA
         renderBalancedFlowState();
     }
 }
@@ -403,7 +430,7 @@ function analyzeActiveBottleneckInCapa() {
     document.getElementById('capa-human-input').value = `Sztab kryzysowy: Weryfikacja gniazda ${nameEl}.`;
 }
 
-// 7. Kolejka Push-Pull Drawer
+// 8. Kolejka Push-Pull Drawer
 function toggleNotificationDrawer() {
     const drawer = document.getElementById('notification-drawer');
     if (!drawer) return;
@@ -476,7 +503,7 @@ function clearEventBuffer() {
     recalculateBottleneckWidget();
 }
 
-// 8. Pobranie zdarzenia do Sztabu 5-Why
+// 9. Pobranie zdarzenia do Sztabu 5-Why
 function pullLatestEventToCapa() {
     const pending = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS");
     if (pending.length === 0) {
@@ -501,7 +528,7 @@ function pullSpecificEventToCapa(index) {
     document.getElementById('capa-human-input').value = `[Zgłoszenie ${ev.source} / ${ev.operatorName}]: ${ev.operatorNote}`;
 }
 
-// 9. Sztab Decyzyjny 5-Why, Gemini AI & Manager Override
+// 10. Sztab Decyzyjny 5-Why, Gemini AI & Manager Override
 function injectPresetPrompt(type) {
     const input = document.getElementById('capa-human-input');
     if (!input) return;
@@ -688,7 +715,7 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
     if (window.lucide) lucide.createIcons();
 }
 
-// 10. Manager Override & Zatwierdzenie Zadania CAPA (Rotacja Wąskiego Gardła)
+// 11. Manager Override & Zatwierdzenie Zadania CAPA (Rotacja Wąskiego Gardła)
 let isOverrideActive = false;
 
 function toggleOverrideMode() {
@@ -728,7 +755,6 @@ function clearAndOverrideCapa() {
     }
 }
 
-// ZATWIERDZENIE CAPA: ZDJĘCIE MASZYNY Z WĄSKIEGO GARDŁA I PROMOCJA KOLEJNEJ
 function confirmCapaDecision() {
     const taskText = document.getElementById('capa-task-text').value;
     const origin = isOverrideActive ? "Zatwierdzono przez Menedżera (Manual Override)" : "Zatwierdzono na bazie analizy AI";
@@ -741,20 +767,17 @@ function confirmCapaDecision() {
         targetMachineName = activeIncidentContext.machineName;
         activeIncidentContext.status = "CAPA_ASSIGNED";
     } else {
-        // Jeśli analiza była odpalona bezpośrednio z kafelka wąskiego gardła
         targetMachineId = activeModalMachineId;
         const machObj = machineFleet.find(m => m.id === targetMachineId) || DEFAULT_BOTTLENECK_FLEET.find(m => m.id === targetMachineId);
         if (machObj) targetMachineName = machObj.name;
     }
 
-    // Oznaczamy wszystkie zdarzenia dla tej stacji jako obsłużone
     incomingEventsQueue.forEach(ev => {
         if (ev.machineId === targetMachineId) {
             ev.status = "CAPA_ASSIGNED";
         }
     });
 
-    // Dodanie do Rejestru Historii CAPA
     capaHistory.unshift({
         machineId: targetMachineId,
         machineName: targetMachineName,
@@ -767,15 +790,13 @@ function confirmCapaDecision() {
     savePersistentStorage();
     updateNotificationBadge();
     renderDrawerEvents();
-
-    // Rekalibracja wąskiego gardła (usuwa obecną maszynę i promuje kolejną)
     recalculateBottleneckWidget();
 
     alert(`Raport CAPA dla ${targetMachineName} został formalnie wyemitowany do UR.\nMaszyna zdjęta z aktywnego wąskiego gardła.`);
     switchTab('dashboard');
 }
 
-// 11. Modal Historii Wdrożonych Zadań CAPA
+// 12. Modal Historii Wdrożonych Zadań CAPA
 function toggleCapaHistoryModal() {
     const modal = document.getElementById('capa-history-modal');
     if (!modal) return;
@@ -835,7 +856,7 @@ function restoreGlobalAiStatus() {
     if (text) text.innerText = "Gemini 2.5: Aktywny";
 }
 
-// 12. Tabela Parku Maszynowego i Modale
+// 13. Tabela Parku Maszynowego i Modale
 function renderMachines() {
     const container = document.getElementById('machines-container');
     if (!container) return;
@@ -968,7 +989,7 @@ function jumpToCapaFromModal() {
     }
 }
 
-// 13. Audyt 5S i Symulator What-If
+// 14. Audyt 5S i Symulator What-If
 const stationAudits = {
     ws_weld: {
         title: "Spawanie Manualne MIG/MAG (Stanowisko S-02)",
