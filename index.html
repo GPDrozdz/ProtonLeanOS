@@ -15,13 +15,13 @@
                 extend: {
                     colors: {
                         graphite: {
-                            950: '#10141c',
-                            900: '#181f2a',
-                            850: '#222b3a',
-                            800: '#2c374a',
-                            750: '#38465e',
-                            700: '#485876',
-                            600: '#5c6e91',
+                            950: '#0e1218',
+                            900: '#151b24',
+                            850: '#1d2532',
+                            800: '#263142',
+                            750: '#324055',
+                            700: '#41526b',
+                            600: '#556a89',
                         },
                         gold: {
                             300: '#fef08a',
@@ -37,6 +37,12 @@
         }
     </script>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .chart-hud-ring {
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
 </head>
 <body class="bg-graphite-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-gold-500/30 selection:text-gold-300">
 
@@ -69,7 +75,6 @@
 
         <!-- Lista zdarzeń w szufladzie -->
         <div id="drawer-events-list" class="flex-1 overflow-y-auto p-4 space-y-3.5">
-            <!-- Dynamicznie wstrzykiwane zgłoszenia -->
             <div class="p-8 text-center text-slate-400 text-xs">
                 Brak oczekujących zdarzeń w kolejce. Wszystkie meldunki zostały obsłużone.
             </div>
@@ -173,7 +178,7 @@
         </div>
 
         <!-- ========================================================================= -->
-        <!-- SEKCJA WYKRESÓW PIERŚCIENIOWYCH NA SAMEJ GÓRZE (PARETO STRAT + OEE) -->
+        <!-- SEKCJA WYKRESÓW PIERŚCIENIOWYCH: INDUSTRIAL SHARP SVG (HUD STYLE) -->
         <!-- ========================================================================= -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
@@ -194,18 +199,26 @@
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
-                        <!-- Wykres Donut SVG -->
+                        <!-- Wykres Donut Sharp SVG (Promień: 42, Obwód = 2 * PI * 42 = 263.89) -->
                         <div class="md:col-span-5 flex flex-col items-center justify-center">
-                            <div class="relative w-40 h-40">
+                            <div class="relative w-48 h-48">
                                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <circle cx="50" cy="50" r="38" stroke="#f43f5e" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="0" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#f59e0b" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="82.3" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#eab308" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="143.7" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#64748b" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="187.1" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="38" stroke="#334155" stroke-width="12" stroke-dasharray="238.7" stroke-dashoffset="217.7" fill="transparent"/>
+                                    <!-- Tło siatki technicznej manometru -->
+                                    <circle cx="50" cy="50" r="42" stroke="#1d2532" stroke-width="8" fill="transparent"/>
+                                    
+                                    <!-- 1. Stół urobku: 34.5% (91.0 / 263.9) -->
+                                    <circle cx="50" cy="50" r="42" stroke="#f43f5e" stroke-width="8" stroke-dasharray="90.0 173.9" stroke-dashoffset="0" stroke-linecap="butt" fill="transparent"/>
+                                    <!-- 2. Podajniki wiązek: 25.7% (67.8 / 263.9) -->
+                                    <circle cx="50" cy="50" r="42" stroke="#f59e0b" stroke-width="8" stroke-dasharray="66.8 197.1" stroke-dashoffset="-92.0" stroke-linecap="butt" fill="transparent"/>
+                                    <!-- 3. Tarcze / Narzędzia: 18.2% (48.0 / 263.9) -->
+                                    <circle cx="50" cy="50" r="42" stroke="#eab308" stroke-width="8" stroke-dasharray="47.0 216.9" stroke-dashoffset="-160.8" stroke-linecap="butt" fill="transparent"/>
+                                    <!-- 4. SMED: 12.8% (33.8 / 263.9) -->
+                                    <circle cx="50" cy="50" r="42" stroke="#64748b" stroke-width="8" stroke-dasharray="32.8 231.1" stroke-dashoffset="-209.8" stroke-linecap="butt" fill="transparent"/>
+                                    <!-- 5. Mikroprzestoje: 8.8% (23.2 / 263.9) -->
+                                    <circle cx="50" cy="50" r="42" stroke="#334155" stroke-width="8" stroke-dasharray="20.2 243.7" stroke-dashoffset="-243.6" stroke-linecap="butt" fill="transparent"/>
                                 </svg>
                                 <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span id="donut-pareto-minutes" class="text-xl font-extrabold font-mono-numbers text-white">148</span>
+                                    <span id="donut-pareto-minutes" class="text-2xl font-extrabold font-mono-numbers text-white tracking-tight">148</span>
                                     <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Minut Łącznie</span>
                                 </div>
                             </div>
@@ -214,23 +227,23 @@
                         <!-- Legenda Pareto -->
                         <div class="md:col-span-7 space-y-2 text-xs">
                             <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> 1. Logistyka / Stół urobku</span>
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> 1. Logistyka / Stół urobku</span>
                                 <span class="font-mono-numbers font-extrabold text-rose-400">34.5% (51m)</span>
                             </div>
                             <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> 2. UR - Podajniki wiązek</span>
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span> 2. UR - Podajniki wiązek</span>
                                 <span class="font-mono-numbers font-extrabold text-amber-400">25.7% (38m)</span>
                             </div>
                             <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-gold-500"></span> 3. Zużycie tarcz / narzędzi</span>
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-gold-500"></span> 3. Zużycie tarcz / narzędzi</span>
                                 <span class="font-mono-numbers font-extrabold text-gold-400">18.2% (27m)</span>
                             </div>
                             <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> 4. Przezbrojenia SMED</span>
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-slate-500"></span> 4. Przezbrojenia SMED</span>
                                 <span class="font-mono-numbers font-bold text-slate-300">12.8% (19m)</span>
                             </div>
                             <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span> 5. Mikroprzestoje gniazd</span>
+                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-slate-700"></span> 5. Mikroprzestoje gniazd</span>
                                 <span class="font-mono-numbers font-bold text-slate-400">8.8% (13m)</span>
                             </div>
                         </div>
@@ -245,7 +258,7 @@
                 </div>
             </div>
 
-            <!-- WYKRES KOŁOWY 2: Składowe OEE Ciągu Technologicznego -->
+            <!-- WYKRES KOŁOWY 2: Składowe OEE Ciągu Technologicznego (Multi-Ring Concentric HUD) -->
             <div class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
                 <div>
                     <div class="flex justify-between items-center pb-4 border-b border-graphite-750">
@@ -262,24 +275,24 @@
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
-                        <!-- Multi-Ring SVG OEE Breakdown -->
+                        <!-- Multi-Ring SVG Sharp Concentric Rings -->
                         <div class="md:col-span-5 flex flex-col items-center justify-center">
-                            <div class="relative w-40 h-40">
+                            <div class="relative w-48 h-48">
                                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <!-- Pierścień Zewnętrzny: Dostępność A (78.4%) -->
-                                    <circle cx="50" cy="50" r="42" stroke="#222b3a" stroke-width="6" fill="transparent"/>
-                                    <circle id="oee-ring-a" cx="50" cy="50" r="42" stroke="#f43f5e" stroke-width="6" stroke-dasharray="263.9" stroke-dashoffset="57.0" stroke-linecap="round" fill="transparent"/>
+                                    <!-- Pierścień Zewnętrzny: Dostępność A (r=43, obwód=270.2, 78.4% = 211.8) -->
+                                    <circle cx="50" cy="50" r="43" stroke="#1d2532" stroke-width="4.5" fill="transparent"/>
+                                    <circle id="oee-ring-a" cx="50" cy="50" r="43" stroke="#f43f5e" stroke-width="4.5" stroke-dasharray="270.2" stroke-dashoffset="58.4" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
                                     
-                                    <!-- Pierścień Środkowy: Wydajność P (89.2%) -->
-                                    <circle cx="50" cy="50" r="32" stroke="#222b3a" stroke-width="6" fill="transparent"/>
-                                    <circle id="oee-ring-p" cx="50" cy="50" r="32" stroke="#f59e0b" stroke-width="6" stroke-dasharray="201.1" stroke-dashoffset="21.7" stroke-linecap="round" fill="transparent"/>
+                                    <!-- Pierścień Środkowy: Wydajność P (r=34, obwód=213.6, 89.2% = 190.5) -->
+                                    <circle cx="50" cy="50" r="34" stroke="#1d2532" stroke-width="4.5" fill="transparent"/>
+                                    <circle id="oee-ring-p" cx="50" cy="50" r="34" stroke="#f59e0b" stroke-width="4.5" stroke-dasharray="213.6" stroke-dashoffset="23.1" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
                                     
-                                    <!-- Pierścień Wewnętrzny: Jakość Q (98.6%) -->
-                                    <circle cx="50" cy="50" r="22" stroke="#222b3a" stroke-width="6" fill="transparent"/>
-                                    <circle id="oee-ring-q" cx="50" cy="50" r="22" stroke="#10b981" stroke-width="6" stroke-dasharray="138.2" stroke-dashoffset="1.9" stroke-linecap="round" fill="transparent"/>
+                                    <!-- Pierścień Wewnętrzny: Jakość Q (r=25, obwód=157.1, 98.6% = 154.9) -->
+                                    <circle cx="50" cy="50" r="25" stroke="#1d2532" stroke-width="4.5" fill="transparent"/>
+                                    <circle id="oee-ring-q" cx="50" cy="50" r="25" stroke="#10b981" stroke-width="4.5" stroke-dasharray="157.1" stroke-dashoffset="2.2" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
                                 </svg>
                                 <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span id="oee-center-percent" class="text-xl font-extrabold font-mono-numbers text-gold-400">68.9%</span>
+                                    <span id="oee-center-percent" class="text-2xl font-extrabold font-mono-numbers text-gold-400">68.9%</span>
                                     <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">OEE</span>
                                 </div>
                             </div>
@@ -289,21 +302,21 @@
                         <div class="md:col-span-7 space-y-2 text-xs">
                             <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
                                 <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Dostępność (Availability)</span>
+                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> Dostępność (Availability)</span>
                                     <span class="text-[10px] text-slate-400">Przestoje maszyn i awarie</span>
                                 </div>
                                 <span id="oee-val-a" class="font-mono-numbers font-extrabold text-rose-400 text-sm">78.4%</span>
                             </div>
                             <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
                                 <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Wydajność (Performance)</span>
+                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span> Wydajność (Performance)</span>
                                     <span class="text-[10px] text-slate-400">Utrata prędkości i taktu</span>
                                 </div>
                                 <span id="oee-val-p" class="font-mono-numbers font-extrabold text-amber-400 text-sm">89.2%</span>
                             </div>
                             <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
                                 <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Jakość (Quality)</span>
+                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-400"></span> Jakość (Quality)</span>
                                     <span class="text-[10px] text-slate-400">Zgodność detali (FTY)</span>
                                 </div>
                                 <span id="oee-val-q" class="font-mono-numbers font-extrabold text-emerald-400 text-sm">98.6%</span>
@@ -320,11 +333,11 @@
         </div>
 
         <!-- ========================================================================= -->
-        <!-- REALIZACJA PLANU & NOWY BLOCZEK KRYTYCZNEGO WĄSKIEGO GARDŁA -->
+        <!-- REALIZACJA PLANU (START OD 20 PALET) & WĄSKIE GARDŁO -->
         <!-- ========================================================================= -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            <!-- KAFELEK 1: Wykonanie Planu Zakładu (Z ciągłym naliczaniem produkcji)[cite: 1] -->
+            <!-- KAFELEK 1: Wykonanie Planu Zakładu -->
             <div class="lg:col-span-2 bg-graphite-900 border-2 border-gold-500/40 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
                 <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-gold-400 via-gold-500 to-transparent"></div>
                 <div>
@@ -336,28 +349,28 @@
                                 <p class="text-xs text-slate-300">Palety pod pakiety butli technicznych oraz kontenery morskie</p>
                             </div>
                         </div>
-                        <span id="plan-delta-badge" class="text-xs font-mono-numbers font-extrabold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 px-3.5 py-1.5 rounded-lg shadow-sm">
-                            Delta: -11.4% do celu
+                        <span id="plan-delta-badge" class="text-xs font-mono-numbers font-extrabold bg-rose-500/20 border border-rose-500/40 text-rose-300 px-3.5 py-1.5 rounded-lg shadow-sm">
+                            Delta: -59.4% do celu
                         </span>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-6 mt-6 items-center">
                         
-                        <!-- 4 Liczniki Numeryczne[cite: 1] -->
+                        <!-- 4 Liczniki Numeryczne (Start: 20 palet, 5 kontenerów, 18.0 Mg) -->
                         <div class="md:col-span-8 grid grid-cols-2 gap-4">
                             <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
                                 <span class="text-xs text-slate-300 font-semibold block">Palety Butlowe</span>
-                                <div id="prod-pallets-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">84 / 100 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
-                                <span id="prod-pallets-percent" class="text-xs text-amber-300 font-mono-numbers font-bold">84.0% celu</span>
+                                <div id="prod-pallets-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">20 / 100 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
+                                <span id="prod-pallets-percent" class="text-xs text-amber-300 font-mono-numbers font-bold">20.0% celu</span>
                             </div>
                             <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
                                 <span class="text-xs text-slate-300 font-semibold block">Kontenery Morskie</span>
-                                <div id="prod-containers-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">6 / 7 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
-                                <span id="prod-containers-percent" class="text-xs text-emerald-300 font-mono-numbers font-bold">85.7% celu</span>
+                                <div id="prod-containers-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">5 / 7 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
+                                <span id="prod-containers-percent" class="text-xs text-emerald-300 font-mono-numbers font-bold">71.4% celu</span>
                             </div>
                             <div class="bg-graphite-950 p-4 rounded-xl border border-gold-500/40 bg-gold-500/5">
                                 <span class="text-xs text-gold-400 font-bold block">Tonaż Przerobiony</span>
-                                <div id="prod-tonnage-val" class="text-2xl font-extrabold font-mono-numbers text-gold-300 mt-1">38.4 <span class="text-xs text-slate-300 font-normal">Mg</span></div>
+                                <div id="prod-tonnage-val" class="text-2xl font-extrabold font-mono-numbers text-gold-300 mt-1">18.0 <span class="text-xs text-slate-300 font-normal">Mg</span></div>
                                 <span class="text-xs text-slate-300 font-mono-numbers">Cel dobowy: 45.0 Mg</span>
                             </div>
                             <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
@@ -367,21 +380,21 @@
                             </div>
                         </div>
 
-                        <!-- Zintegrowany Wykres Pierścieniowy Realizacji Zlecenia -->
+                        <!-- Zintegrowany Wykres Pierścieniowy Sharp SVG (r=40, Obwód = 251.3) -->
                         <div class="md:col-span-4 flex flex-col items-center justify-center p-4 bg-graphite-950 rounded-xl border border-graphite-750">
-                            <div class="relative w-32 h-32">
+                            <div class="relative w-36 h-36">
                                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <circle cx="50" cy="50" r="40" stroke="#222b3a" stroke-width="12" fill="transparent"/>
-                                    <circle id="donut-plan-circle" cx="50" cy="50" r="40" stroke="#eab308" stroke-width="12" stroke-dasharray="251.2" stroke-dashoffset="38.7" stroke-linecap="round" fill="transparent" class="transition-all duration-1000"/>
+                                    <circle cx="50" cy="50" r="40" stroke="#1d2532" stroke-width="8" fill="transparent"/>
+                                    <circle id="donut-plan-circle" cx="50" cy="50" r="40" stroke="#eab308" stroke-width="8" stroke-dasharray="251.3" stroke-dashoffset="149.3" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
                                 </svg>
                                 <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span id="donut-plan-text" class="text-xl font-extrabold font-mono-numbers text-white">84.6%</span>
+                                    <span id="donut-plan-text" class="text-xl font-extrabold font-mono-numbers text-white">40.6%</span>
                                     <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Realizacja</span>
                                 </div>
                             </div>
                             <div class="mt-2.5 flex items-center gap-3 text-[11px] font-mono-numbers">
-                                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-gold-500"></span> Gotowe</span>
-                                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-graphite-850"></span> Pozostało</span>
+                                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-gold-500"></span> Wykonane</span>
+                                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-graphite-850"></span> Pozostało</span>
                             </div>
                         </div>
                     </div>
@@ -389,11 +402,11 @@
 
                 <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between text-xs">
                     <span class="text-slate-300 font-medium">Sumaryczny wskaźnik realizacji bieżącego zlecenia:</span>
-                    <span id="summary-fulfillment-percent" class="font-extrabold text-gold-400 font-mono-numbers text-base">84.6%</span>
+                    <span id="summary-fulfillment-percent" class="font-extrabold text-gold-400 font-mono-numbers text-base">40.6%</span>
                 </div>
             </div>
 
-            <!-- KAFELEK 2: NOWY BLOCZEK KRYTYCZNEGO WĄSKIEGO GARDŁA (DANE TWARDE + LISTA AWARII) -->
+            <!-- KAFELEK 2: KRYTYCZNE WĄSKIE GARDŁO (ROTACJA G-01 -> G-02 -> G-09) -->
             <div id="bottleneck-card" class="bg-graphite-900 border-2 border-rose-500/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden">
                 <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500"></div>
                 <div>
@@ -421,7 +434,6 @@
                     <div class="mt-3.5 space-y-2">
                         <span class="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">Rejestr awarii w toku (Oczekuje na CAPA):</span>
                         <div id="bottleneck-events-feed" class="space-y-2">
-                            <!-- Generowane dynamicznie przez dashboard.js -->
                             <div class="p-2.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs">
                                 <div class="flex justify-between font-bold text-rose-300">
                                     <span>BLM_JAM: Zablokowany stół urobku</span>
@@ -544,7 +556,7 @@
 
     </main>
 
-    <!-- TAB 2: SZTAB KRYZYSOWY (5-WHY / CAPA Z KOLEJKĄ PUSH-PULL & OVERRIDE) -->
+    <!-- TAB 2: SZTAB KRYZYSOWY (5-WHY / CAPA) -->
     <main id="tab-capa" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
             
@@ -823,7 +835,6 @@
             </div>
 
             <div id="capa-history-list" class="p-6 overflow-y-auto space-y-4 flex-1">
-                <!-- Wstrzykiwane dynamicznie przez dashboard.js -->
                 <div class="p-8 text-center text-slate-400 text-xs">
                     Brak zamkniętych zadań CAPA w bieżącej zmianie.
                 </div>
@@ -837,16 +848,23 @@
         </div>
     </div>
 
-    <!-- Status Footer -->
+    <!-- Status Footer + Przycisk Twardego Resetu Symulacji -->
     <footer class="bg-graphite-900 border-t border-graphite-750 py-4 mt-auto">
         <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300">
             <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-full bg-gold-400"></span>
                 <span class="font-bold text-white">Proton Lean OS</span> &copy; 2026 | Enterprise Heavy Fab Edition
             </div>
-            <div class="flex items-center gap-5 text-xs font-mono-numbers font-medium">
+            
+            <div class="flex items-center gap-4 text-xs font-mono-numbers font-medium">
                 <span>Magistrala MES: proton_telemetry_bus</span>
                 <span>Pamięć trwała: localStorage active</span>
+                
+                <!-- Przycisk Twardego Resetu Symulacji z ikoną rotate-ccw -->
+                <button onclick="resetFactorySimulationState()" title="Twardy reset symulacji fabryki (Czyści localStorage i przywraca stan początkowy)" class="p-1.5 rounded-lg bg-graphite-950 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-graphite-750 hover:border-rose-500/50 transition">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+                
                 <span class="text-gold-400 font-bold">PANS Krosno</span>
             </div>
         </div>

@@ -1,34 +1,89 @@
 /**
- * Proton Lean OS - Executive Dashboard Logic (v2.5)
- * Trwałość w localStorage, automatyczny takt produkcji, rotacja wąskiego gardła i rejestr CAPA.
+ * Proton Lean OS - Executive Dashboard Logic (v2.6)
+ * Trwałość planu (20 palet / 5 kontenerów), rotacja wąskiego gardła (G-01 -> G-02 -> G-09) i reset symulacji.
  */
 
-const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v25';
-const STORAGE_KEY_CAPA = 'proton_lean_capa_history_v25';
+const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v26';
+const STORAGE_KEY_CAPA = 'proton_lean_capa_history_v26';
+const STORAGE_KEY_PROD = 'proton_lean_prod_state_v26';
 
 let machineFleet = [];
 let showAllMachines = false;
 let activeModalMachineId = 0;
 let isHalLocked = false;
 
-// Bufor zdarzeń i rejestr CAPA (odczyt z localStorage)
+// Rejestry w pamięci
 let incomingEventsQueue = [];
 let capaHistory = [];
 let activeIncidentContext = null;
 
-// Stan planu wykonania produkcji (Model matematyczny)
-let productionState = {
-    palletsDone: 84,
+// Domyślny stan początkowy produkcji (20 palet, 5 kontenerów, 18.0 Mg)
+const INITIAL_PROD_STATE = {
+    palletsDone: 20,
     palletsTarget: 100,
-    containersDone: 6,
+    containersDone: 5,
     containersTarget: 7,
-    tonnageDone: 38.4,
+    tonnageDone: 18.0,
     tonnageTarget: 45.0,
     baseTaktMin: 30.6,
     currentTaktMin: 34.8,
     totalLossPLN: 8625,
     totalDowntimeMin: 148
 };
+
+let productionState = { ...INITIAL_PROD_STATE };
+
+// Domyślna hierarchia strat maszynowych do automatycznej rotacji
+const DEFAULT_BOTTLENECK_FLEET = [
+    {
+        id: 0,
+        name: "Laser BLM Płytowy CNC",
+        code: "G-01",
+        downtimeMin: 51,
+        lossPLN: 3825,
+        oee: "62.6%",
+        shareText: "68% strat ciągu",
+        events: [
+            { fault: "BLM_JAM: Zablokowany stół urobku", min: 51, note: "Pisk prowadnicy osi Y i zakleszczony ażur" }
+        ]
+    },
+    {
+        id: 1,
+        name: "Laser BLM Tube (Rury i Profile)",
+        code: "G-02",
+        downtimeMin: 36,
+        lossPLN: 2700,
+        oee: "65.4%",
+        shareText: "26% strat ciągu",
+        events: [
+            { fault: "TUBE_FEED: Zacięcie podajnika wiązki", min: 36, note: "Odchyłka prostoliniowości profilu w kasecie podawania" }
+        ]
+    },
+    {
+        id: 8,
+        name: "Wykończenie Przedgalwaniczne",
+        code: "G-09",
+        downtimeMin: 28,
+        lossPLN: 1400,
+        oee: "71.2%",
+        shareText: "16% strat ciągu",
+        events: [
+            { fault: "HOLE_MISSING: Brak otworów odpowietrzeń", min: 28, note: "Odrzut partii detali przed wejściem na trawersę cynku" }
+        ]
+    },
+    {
+        id: 3,
+        name: "Giętarka CNC do Rur i Profili",
+        code: "G-04",
+        downtimeMin: 19,
+        lossPLN: 1045,
+        oee: "74.8%",
+        shareText: "11% strat ciągu",
+        events: [
+            { fault: "HYDR_TEMP: Przegrzanie agregatu", min: 19, note: "Zabrudzona chłodnica oleju, spadek ciśnienia docisku" }
+        ]
+    }
+];
 
 // 1. Inicjalizacja i odczyt pamięci trwałej
 async function initDashboard() {
@@ -62,13 +117,16 @@ async function initDashboard() {
 function loadPersistentStorage() {
     try {
         const storedQueue = localStorage.getItem(STORAGE_KEY_QUEUE);
-        if (storedQueue) {
-            incomingEventsQueue = JSON.parse(storedQueue);
-        }
+        if (storedQueue) incomingEventsQueue = JSON.parse(storedQueue);
 
         const storedCapa = localStorage.getItem(STORAGE_KEY_CAPA);
-        if (storedCapa) {
-            capaHistory = JSON.parse(storedCapa);
+        if (storedCapa) capaHistory = JSON.parse(storedCapa);
+
+        const storedProd = localStorage.getItem(STORAGE_KEY_PROD);
+        if (storedProd) {
+            productionState = JSON.parse(storedProd);
+        } else {
+            productionState = { ...INITIAL_PROD_STATE };
         }
     } catch (e) {
         console.error('[Dashboard] Błąd odczytu localStorage:', e);
@@ -79,18 +137,32 @@ function savePersistentStorage() {
     try {
         localStorage.setItem(STORAGE_KEY_QUEUE, JSON.stringify(incomingEventsQueue));
         localStorage.setItem(STORAGE_KEY_CAPA, JSON.stringify(capaHistory));
+        localStorage.setItem(STORAGE_KEY_PROD, JSON.stringify(productionState));
     } catch (e) {
         console.error('[Dashboard] Błąd zapisu do localStorage:', e);
     }
 }
 
+// Twardy reset symulacji fabryki (ikona rotate-ccw w stopce)
+function resetFactorySimulationState() {
+    if (confirm("Czy na pewno chcesz zresetować symulację fabryki do stanu początkowego?\n(Spowoduje to wyczyszczenie kolejki, historii CAPA oraz reset produkcji do 20 palet).")) {
+        localStorage.removeItem(STORAGE_KEY_QUEUE);
+        localStorage.removeItem(STORAGE_KEY_CAPA);
+        localStorage.removeItem(STORAGE_KEY_PROD);
+        incomingEventsQueue = [];
+        capaHistory = [];
+        productionState = { ...INITIAL_PROD_STATE };
+        location.reload();
+    }
+}
+
 // 3. Automatyczny Takt Produkcji (~2 palety na minutę w tle)
 function startBackgroundProductionTicker() {
-    // Co 30 sekund przybywa 1 paleta, jeśli brak aktywnej awarii na terminalu
     setInterval(() => {
         if (productionState.palletsDone < productionState.palletsTarget) {
             productionState.palletsDone += 1;
             productionState.tonnageDone = parseFloat((productionState.tonnageDone + 0.35).toFixed(1));
+            savePersistentStorage();
             updateProductionMetricsUI();
         }
     }, 30000);
@@ -141,11 +213,12 @@ function recalculateProductionImpact(payload) {
     if (payload.machineId <= 2) {
         const lostPallets = Math.floor(mins / 25);
         if (lostPallets > 0) {
-            productionState.palletsDone = Math.max(50, productionState.palletsDone - lostPallets);
+            productionState.palletsDone = Math.max(10, productionState.palletsDone - lostPallets);
             productionState.tonnageDone = parseFloat((productionState.tonnageDone - (lostPallets * 0.35)).toFixed(1));
         }
     }
 
+    savePersistentStorage();
     updateProductionMetricsUI();
 }
 
@@ -188,7 +261,7 @@ function updateProductionMetricsUI() {
     if (totalLossEl) totalLossEl.innerText = `${productionState.totalLossPLN.toLocaleString('pl-PL')} PLN`;
     if (summaryPercentEl) summaryPercentEl.innerText = `${totalFulfillment}%`;
 
-    // Wykres pierścieniowy wykonania planu (SVG r=40, obwód=251.3)
+    // Wykres pierścieniowy Sharp SVG wykonania planu (r=40, obwód=251.3)
     const donutCircle = document.getElementById('donut-plan-circle');
     const donutText = document.getElementById('donut-plan-text');
     if (donutCircle && donutText) {
@@ -207,63 +280,66 @@ function updateProductionMetricsUI() {
 
 // 6. Rotacja Krytycznego Wąskiego Gardła (Dynamic Bottleneck Shifting)
 function recalculateBottleneckWidget() {
-    const card = document.getElementById('bottleneck-card');
-    const nameEl = document.getElementById('bottleneck-machine-name');
-    const tagEl = document.getElementById('bottleneck-station-tag');
-    const durEl = document.getElementById('bottleneck-duration');
-    const costEl = document.getElementById('bottleneck-cost');
-    const oeeEl = document.getElementById('bottleneck-oee');
-    const feedContainer = document.getElementById('bottleneck-events-feed');
-    const shareBadge = document.getElementById('bottleneck-share-badge');
+    // 1. Sprawdzamy maszyny, które mają już wdrożone CAPA
+    const resolvedMachineIds = capaHistory.map(c => c.machineId);
 
-    // Filtrujemy tylko usterki oczekujące (bez przypisanego CAPA)
-    const pendingEvents = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS");
+    // 2. Szukamy zdarzeń w toku z kolejki (live feed)
+    const pendingEvents = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS" && !resolvedMachineIds.includes(ev.machineId));
 
-    // Jeśli brak zdarzeń z terminala, używamy danych domyślnych dla G-01
-    if (pendingEvents.length === 0) {
-        if (capaHistory.some(c => c.machineId === 0)) {
-            // Jeśli G-01 ma już wdrożone CAPA, promujemy G-02
-            renderBottleneckMachine(1, "Laser BLM Tube", "G-02", 36, 2700, "65.4%", "26% strat ciągu", []);
-        } else {
-            renderBottleneckMachine(0, "Laser BLM Płytowy CNC", "G-01", 51, 3825, "62.6%", "68% strat ciągu", [
-                { fault: "BLM_JAM: Zablokowany stół urobku", min: 51, note: "Pisk prowadnicy osi Y i zakleszczony ażur" }
-            ]);
-        }
+    if (pendingEvents.length > 0) {
+        // Agregacja zdarzeń na żywo
+        const stationLosses = {};
+        pendingEvents.forEach(ev => {
+            const id = ev.machineId;
+            if (!stationLosses[id]) {
+                stationLosses[id] = { id: id, name: ev.machineName, code: ev.stationCode || 'G-01', totalMin: 0, totalCost: 0, events: [] };
+            }
+            stationLosses[id].totalMin += ev.durationMin;
+            stationLosses[id].totalCost += ev.costTotalPLN;
+            stationLosses[id].events.push(ev);
+        });
+
+        const sorted = Object.values(stationLosses).sort((a, b) => b.totalMin - a.totalMin);
+        const top = sorted[0];
+        const targetMach = machineFleet.find(m => m.id === top.id);
+        const oeeVal = targetMach ? `${targetMach.oee}%` : "62.6%";
+        const sharePct = Math.round((top.totalMin / Math.max(1, productionState.totalDowntimeMin)) * 100);
+
+        renderBottleneckMachine(
+            top.id,
+            top.name,
+            top.code,
+            top.totalMin,
+            top.totalCost,
+            oeeVal,
+            `${sharePct}% strat ciągu`,
+            top.events.slice(0, 2).map(e => ({ fault: `${e.faultCode}: ${e.faultDescription}`, min: e.durationMin, note: e.operatorNote }))
+        );
         return;
     }
 
-    // Agregacja minut przestoju per maszyna
-    const stationLosses = {};
-    pendingEvents.forEach(ev => {
-        const id = ev.machineId;
-        if (!stationLosses[id]) {
-            stationLosses[id] = { id: id, name: ev.machineName, code: ev.stationCode || 'G-01', totalMin: 0, totalCost: 0, events: [] };
-        }
-        stationLosses[id].totalMin += ev.durationMin;
-        stationLosses[id].totalCost += ev.costTotalPLN;
-        stationLosses[id].events.push(ev);
-    });
+    // 3. Fallback do hierarchii fabrycznej: promujemy pierwszą maszynę, która NIE ma zatwierdzonego CAPA
+    const candidate = DEFAULT_BOTTLENECK_FLEET.find(m => !resolvedMachineIds.includes(m.id));
 
-    const sortedStations = Object.values(stationLosses).sort((a, b) => b.totalMin - a.totalMin);
-    const topBottleneck = sortedStations[0];
-
-    const targetMachineObj = machineFleet.find(m => m.id === topBottleneck.id);
-    const oeeVal = targetMachineObj ? `${targetMachineObj.oee}%` : "62.6%";
-    const sharePct = Math.round((topBottleneck.totalMin / Math.max(1, productionState.totalDowntimeMin)) * 100);
-
-    renderBottleneckMachine(
-        topBottleneck.id,
-        topBottleneck.name,
-        topBottleneck.code,
-        topBottleneck.totalMin,
-        topBottleneck.totalCost,
-        oeeVal,
-        `${sharePct}% strat ciągu`,
-        topBottleneck.events.slice(0, 2).map(e => ({ fault: `${e.faultCode}: ${e.faultDescription}`, min: e.durationMin, note: e.operatorNote }))
-    );
+    if (candidate) {
+        renderBottleneckMachine(
+            candidate.id,
+            candidate.name,
+            candidate.code,
+            candidate.downtimeMin,
+            candidate.lossPLN,
+            candidate.oee,
+            candidate.shareText,
+            candidate.events
+        );
+    } else {
+        // Wszystkie maszyny zabezpieczone CAPA
+        renderBalancedFlowState();
+    }
 }
 
 function renderBottleneckMachine(id, name, code, mins, cost, oee, share, eventsList) {
+    activeModalMachineId = id;
     const nameEl = document.getElementById('bottleneck-machine-name');
     const tagEl = document.getElementById('bottleneck-station-tag');
     const durEl = document.getElementById('bottleneck-duration');
@@ -293,6 +369,27 @@ function renderBottleneckMachine(id, name, code, mins, cost, oee, share, eventsL
                 </div>
             `).join('');
         }
+    }
+}
+
+function renderBalancedFlowState() {
+    const card = document.getElementById('bottleneck-card');
+    if (card) {
+        card.innerHTML = `
+            <div class="p-6 text-center space-y-3 flex flex-col items-center justify-center h-full">
+                <div class="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-400/50">
+                    <i data-lucide="check-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-extrabold text-white">Ciąg Produkcyjny Zbalansowany</h3>
+                    <p class="text-xs text-slate-300 mt-1">Wszystkie krytyczne wąskie gardła zostały zabezpieczone wyemitowanymi zadaniami CAPA.</p>
+                </div>
+                <button onclick="toggleCapaHistoryModal()" class="px-4 py-2 bg-graphite-950 hover:bg-graphite-850 text-gold-400 border border-gold-500/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 mt-2">
+                    <i data-lucide="history" class="w-4 h-4"></i> Zobacz Rejestr Zamkniętych Działań
+                </button>
+            </div>
+        `;
+        if (window.lucide) lucide.createIcons();
     }
 }
 
@@ -636,36 +733,42 @@ function confirmCapaDecision() {
     const taskText = document.getElementById('capa-task-text').value;
     const origin = isOverrideActive ? "Zatwierdzono przez Menedżera (Manual Override)" : "Zatwierdzono na bazie analizy AI";
 
-    const targetMachineId = activeIncidentContext ? activeIncidentContext.machineId : 0;
-    const targetMachineName = activeIncidentContext ? activeIncidentContext.machineName : "Laser BLM Płytowy";
+    let targetMachineId = 0;
+    let targetMachineName = "Laser BLM Płytowy";
 
-    // 1. Oznaczenie zdarzenia w buforze jako obsłużone
     if (activeIncidentContext) {
+        targetMachineId = activeIncidentContext.machineId;
+        targetMachineName = activeIncidentContext.machineName;
         activeIncidentContext.status = "CAPA_ASSIGNED";
+    } else {
+        // Jeśli analiza była odpalona bezpośrednio z kafelka wąskiego gardła
+        targetMachineId = activeModalMachineId;
+        const machObj = machineFleet.find(m => m.id === targetMachineId) || DEFAULT_BOTTLENECK_FLEET.find(m => m.id === targetMachineId);
+        if (machObj) targetMachineName = machObj.name;
     }
 
-    // Oznaczamy wszystkie oczekujące usterki dla tej maszyny jako zabezpieczone
+    // Oznaczamy wszystkie zdarzenia dla tej stacji jako obsłużone
     incomingEventsQueue.forEach(ev => {
         if (ev.machineId === targetMachineId) {
             ev.status = "CAPA_ASSIGNED";
         }
     });
 
-    // 2. Dodanie do Rejestru Historii CAPA
+    // Dodanie do Rejestru Historii CAPA
     capaHistory.unshift({
         machineId: targetMachineId,
         machineName: targetMachineName,
         task: taskText,
         origin: origin,
         timestamp: new Date().toLocaleTimeString().slice(0, 5),
-        rootCause: "Brak ustandaryzowanego SOP minimalnej sztywności ażuru"
+        rootCause: "Standaryzacja SOP & eliminacja przyczyn źródłowych"
     });
 
     savePersistentStorage();
     updateNotificationBadge();
     renderDrawerEvents();
 
-    // 3. Rekalibracja wąskiego gardła (Zdejmuje obecną maszynę i promuje kolejną)
+    // Rekalibracja wąskiego gardła (usuwa obecną maszynę i promuje kolejną)
     recalculateBottleneckWidget();
 
     alert(`Raport CAPA dla ${targetMachineName} został formalnie wyemitowany do UR.\nMaszyna zdjęta z aktywnego wąskiego gardła.`);
@@ -981,7 +1084,7 @@ function loadStationAudit() {
                 </div>
 
                 <div class="w-full h-48 bg-graphite-900 rounded-xl border-2 border-graphite-700 relative overflow-hidden flex items-center justify-center p-4">
-                    <div class="absolute inset-0 bg-[radial-gradient(#38465e_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
+                    <div class="absolute inset-0 bg-[radial-gradient(#324055_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
                     
                     <div class="border-2 border-amber-400 bg-amber-500/15 p-3 rounded-xl text-xs text-amber-200 max-w-sm z-10 shadow-xl text-center backdrop-blur-md">
                         <i data-lucide="scan-line" class="w-6 h-6 mx-auto mb-1 text-amber-400"></i>
