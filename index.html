@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proton Lean OS v2.4 - AI Operations Platform</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        graphite: {
+                            950: '#141820',
+                            900: '#1c222d',
+                            850: '#252d3d',
+                            800: '#2e374a',
+                            750: '#384359',
+                            700: '#46536c',
+                            600: '#5c6b87',
+                        },
+                        gold: {
+                            300: '#fef08a',
+                            400: '#fde047',
+                            450: '#facc15',
+                            500: '#eab308',
+                            600: '#ca8a04',
+                            700: '#a16207',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-mono-numbers { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1c222d; }
+        ::-webkit-scrollbar-thumb { background: #384359; border-radius: 4px; border: 2px solid #1c222d; }
+        ::-webkit-scrollbar-thumb:hover { background: #ca8a04; }
+        @keyframes pulse-red-eye {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.8); }
+            50% { transform: scale(1.1); box-shadow: 0 0 30px rgba(239, 68, 68, 1); }
+        }
+        .hal-eye-glow {
+            animation: pulse-red-eye 2s infinite ease-in-out;
+        }
+        @keyframes slide-in-toast {
+            from { transform: translateX(120%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-animate {
+            animation: slide-in-toast 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+</head>
+<body class="bg-graphite-900 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-gold-500/30 selection:text-gold-300">
+
+    <!-- Kontener na dynamiczne powiadomienia TOAST (Magistrala MES) -->
+    <div id="toast-container" class="fixed top-24 right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-md w-full"></div>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-graphite-850 border-b-2 border-gold-500/40 sticky top-0 z-40 shadow-xl backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+            <div class="flex items-center gap-3.5 cursor-pointer" onclick="switchTab('dashboard')">
+                <div class="w-12 h-12 rounded-xl bg-gold-500/15 border-2 border-gold-400 flex items-center justify-center text-gold-400 shadow-lg shadow-gold-500/10">
+                    <i data-lucide="cpu" class="w-7 h-7"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold text-xl tracking-wider text-white">PROTON<span class="text-gold-400">LEAN</span></span>
+                        <span class="text-xs font-mono-numbers font-bold bg-gold-500/20 text-gold-300 border border-gold-400/50 px-2 py-0.5 rounded-md">v2.4 PRO</span>
+                    </div>
+                    <p class="text-xs text-slate-300 font-medium tracking-tight">Heavy Fabrication & Assembly Management OS</p>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <nav class="hidden md:flex items-center gap-2 bg-graphite-900/90 p-1.5 rounded-xl border border-graphite-700">
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold bg-gold-500 text-graphite-950 shadow-md">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Kokpit Główny
+                </button>
+                <button onclick="switchTab('capa')" id="nav-capa" class="nav-btn flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition">
+                    <i data-lucide="shield-alert" class="w-4 h-4 text-gold-400"></i> Sztab 5-Why (CAPA)
+                </button>
+                <button onclick="switchTab('audit5s')" id="nav-audit5s" class="nav-btn flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition">
+                    <i data-lucide="scan" class="w-4 h-4 text-gold-400"></i> Audyt Wizualny 5S
+                </button>
+                <button onclick="switchTab('whatif')" id="nav-whatif" class="nav-btn flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition">
+                    <i data-lucide="sliders" class="w-4 h-4 text-gold-400"></i> Symulator What-If
+                </button>
+            </nav>
+
+            <!-- Status Indicator & Link do Terminala -->
+            <div class="flex items-center gap-3">
+                <a href="terminal.html" target="_blank" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold-500/10 hover:bg-gold-500/20 border border-gold-400 text-gold-300 text-xs font-bold transition">
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Otwórz Terminal MES
+                </a>
+                <div id="ai-global-status" class="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 text-xs font-mono-numbers font-bold shadow-sm">
+                    <span id="ai-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="ai-status-text">Gemini 2.5: Aktywny</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- TAB 1: KOKPIT GŁÓWNY -->
+    <main id="tab-dashboard" class="tab-content flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Controls: Zmiany + Zakres czasu + Kalendarz -->
+        <div class="bg-graphite-850 border border-graphite-700 p-5 rounded-2xl shadow-xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <span class="text-xs font-bold uppercase tracking-wider text-gold-400 flex items-center gap-2">
+                    <i data-lucide="sun-medium" class="w-4 h-4"></i> Zmiana Robocza:
+                </span>
+                <div class="inline-flex p-1.5 bg-graphite-900 rounded-xl border border-graphite-700 gap-1.5">
+                    <button onclick="setShift(1)" id="shift-btn-1" class="shift-btn px-4 py-2 rounded-lg text-xs font-extrabold bg-gold-500 text-graphite-950 font-mono-numbers shadow transition">I (06-14)</button>
+                    <button onclick="setShift(2)" id="shift-btn-2" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition">II (14-22)</button>
+                    <button onclick="setShift(3)" id="shift-btn-3" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition">III (22-06)</button>
+                    <button onclick="setShift('all')" id="shift-btn-all" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition">Pełna Doba</button>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Okres:</span>
+                    <select id="period-select" onchange="renderMachines()" class="bg-graphite-900 border border-graphite-700 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
+                        <option value="today">Dziś (Bieżąca zmiana)</option>
+                        <option value="yesterday">Wczoraj (Bilans 24h)</option>
+                        <option value="wtd" selected>Bieżący tydzień (W-T-D)</option>
+                        <option value="last_week">Poprzedni tydzień</option>
+                        <option value="mtd">Bieżący miesiąc (M-T-D)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-2 bg-graphite-900 border border-graphite-700 px-3.5 py-2 rounded-xl text-xs font-mono-numbers font-semibold">
+                    <i data-lucide="calendar" class="w-4 h-4 text-gold-400"></i>
+                    <input type="date" value="2026-10-26" class="bg-transparent text-slate-200 focus:outline-none text-xs font-bold">
+                    <span class="text-gold-500 font-bold">-</span>
+                    <input type="date" value="2026-10-30" class="bg-transparent text-slate-200 focus:outline-none text-xs font-bold">
+                </div>
+            </div>
+        </div>
+
+        <!-- Realizacja Planu & Główne Wąskie Gardło -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 bg-graphite-850 border-2 border-gold-500/40 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+                <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-gold-400 via-gold-500 to-transparent"></div>
+                <div>
+                    <div class="flex flex-wrap justify-between items-center gap-3">
+                        <div class="flex items-center gap-3">
+                            <span class="p-2.5 rounded-xl bg-gold-500/20 text-gold-400 border border-gold-400"><i data-lucide="package-check" class="w-6 h-6"></i></span>
+                            <div>
+                                <h2 class="text-base font-extrabold text-white uppercase tracking-wider">Wykonanie Planu Zakładu (Stal / Spawalnictwo)</h2>
+                                <p class="text-xs text-slate-300">Palety pod pakiety butli technicznych oraz kontenery morskie</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-mono-numbers font-extrabold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-lg shadow-sm">
+                            Delta: -11.4% do celu
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
+                        <div class="bg-graphite-900 p-4 rounded-xl border border-graphite-700">
+                            <span class="text-xs text-slate-300 font-semibold block">Palety Butlowe</span>
+                            <div class="text-2xl font-extrabold font-mono-numbers text-white mt-1">84 / 100 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
+                            <span class="text-xs text-amber-300 font-mono-numbers font-bold">84.0% celu</span>
+                        </div>
+                        <div class="bg-graphite-900 p-4 rounded-xl border border-graphite-700">
+                            <span class="text-xs text-slate-300 font-semibold block">Kontenery Morskie</span>
+                            <div class="text-2xl font-extrabold font-mono-numbers text-white mt-1">6 / 7 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
+                            <span class="text-xs text-emerald-300 font-mono-numbers font-bold">85.7% celu</span>
+                        </div>
+                        <div class="bg-graphite-900 p-4 rounded-xl border border-gold-500/40 bg-gold-500/5">
+                            <span class="text-xs text-gold-400 font-bold block">Tonaż Przerobiony</span>
+                            <div class="text-2xl font-extrabold font-mono-numbers text-gold-300 mt-1">38.4 <span class="text-xs text-slate-300 font-normal">Mg</span></div>
+                            <span class="text-xs text-slate-300 font-mono-numbers">Cel: 45.0 Mg</span>
+                        </div>
+                        <div class="bg-graphite-900 p-4 rounded-xl border border-graphite-700">
+                            <span class="text-xs text-slate-300 font-semibold block">Średni Takt Zakładu</span>
+                            <div class="text-2xl font-extrabold font-mono-numbers text-white mt-1">34.8 <span class="text-xs text-slate-400 font-normal">min</span></div>
+                            <span class="text-xs text-rose-300 font-mono-numbers font-bold">+4.2 min odchyłki</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between text-xs">
+                    <span class="text-slate-300 font-medium">Sumaryczny wskaźnik realizacji bieżącego zlecenia:</span>
+                    <span class="font-extrabold text-gold-400 font-mono-numbers text-base">84.6%</span>
+                </div>
+            </div>
+
+            <!-- Główne Wąskie Gardło -->
+            <div class="bg-graphite-850 border-2 border-rose-500/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden">
+                <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500"></div>
+                <div>
+                    <div class="flex items-center justify-between">
+                        <span class="px-3 py-1 rounded-lg text-xs font-mono-numbers font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/50 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span> Krytyczne Wąskie Gardło
+                        </span>
+                        <span class="text-xs font-mono-numbers font-bold text-slate-300">68% strat ciągu</span>
+                    </div>
+
+                    <div class="mt-4">
+                        <h3 id="bottleneck-machine-name" class="text-lg font-bold text-white">Laser BLM Płytowy CNC</h3>
+                        <p id="bottleneck-fault-desc" class="text-xs text-rose-300 font-bold mt-1">Zablokowany stół / spiętrzenie usuwania urobku</p>
+                        <p id="bottleneck-impact-note" class="text-xs text-slate-300 mt-2 leading-relaxed">
+                            Brak odbioru ażuru i wzmocnień naroży kontenera wstrzymuje cięcie. Z powodu braku detali cela zrobotyzowana spawania czeka na komponenty.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mt-5 pt-3 border-t border-graphite-750 bg-graphite-900 p-3.5 rounded-xl border border-graphite-700 flex items-center justify-between">
+                    <div>
+                        <span class="text-[11px] uppercase text-slate-300 block font-bold">Skumulowany przestój:</span>
+                        <span id="bottleneck-duration" class="text-base font-extrabold font-mono-numbers text-rose-400">51 minut</span>
+                    </div>
+                    <button onclick="openMachineModal(0)" class="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-2 border-rose-500/50 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                        Diagnoza <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3 Najkosztowniejsze Przestoje -->
+        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-graphite-750 gap-2">
+                <div class="flex items-center gap-2.5">
+                    <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="trending-down" class="w-5 h-5"></i></span>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Top 3 Najkosztowniejsze Przestoje Ciągu Technologicznego</h3>
+                        <p class="text-xs text-slate-300">Twardy bilans finansowy utraconego narzutu, robocizny i opóźnień logistycznych</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs text-slate-300">Łączna strata w okresie:</span>
+                    <span id="total-loss-val" class="text-base font-extrabold text-gold-400 font-mono-numbers ml-2">8 625 PLN</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
+                <div class="bg-graphite-900 border-2 border-rose-500/50 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
+                    <div>
+                        <div class="flex justify-between items-start">
+                            <span class="px-2.5 py-1 rounded text-[11px] font-mono-numbers font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">#1 NAJWYŻSZY KOSZT</span>
+                            <span id="loss-1-val" class="text-sm font-extrabold text-gold-400 font-mono-numbers">3 825 PLN</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mt-3">Laser BLM Płytowy</h4>
+                        <p class="text-xs text-slate-200 mt-1">Zablokowany stół odbiorczy / brak odbioru urobku</p>
+                        <p id="loss-1-duration" class="text-xs text-slate-300 mt-1 font-mono-numbers font-medium">Czas trwania: 51 min (~75 PLN/min)</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-graphite-750 flex justify-between items-center text-xs">
+                        <span class="text-slate-300 font-medium">Odpowiedzialność:</span>
+                        <span class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold border border-blue-500/40">Logistyka Wewnętrzna</span>
+                    </div>
+                </div>
+
+                <div class="bg-graphite-900 border-2 border-amber-500/50 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
+                    <div>
+                        <div class="flex justify-between items-start">
+                            <span class="px-2.5 py-1 rounded text-[11px] font-mono-numbers font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">#2 W STRATACH</span>
+                            <span class="text-sm font-extrabold text-gold-400 font-mono-numbers">2 700 PLN</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mt-3">Laser BLM Rur i Profili</h4>
+                        <p class="text-xs text-slate-200 mt-1">Zacięcie automatycznego podajnika wiązki profili</p>
+                        <p class="text-xs text-slate-300 mt-1 font-mono-numbers font-medium">Czas trwania: 36 min (~75 PLN/min)</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-graphite-750 flex justify-between items-center text-xs">
+                        <span class="text-slate-300 font-medium">Odpowiedzialność:</span>
+                        <span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/40">UR - Mechanika</span>
+                    </div>
+                </div>
+
+                <div class="bg-graphite-900 border-2 border-graphite-700 rounded-xl p-4 flex flex-col justify-between hover:border-gold-500 transition shadow-md">
+                    <div>
+                        <div class="flex justify-between items-start">
+                            <span class="px-2.5 py-1 rounded text-[11px] font-mono-numbers font-bold bg-graphite-800 text-slate-200 border border-graphite-600">#3 W STRATACH</span>
+                            <span class="text-sm font-extrabold text-gold-400 font-mono-numbers">2 100 PLN</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mt-3">Wykończenie Przedgalwaniczne</h4>
+                        <p class="text-xs text-slate-200 mt-1">Odrzut partii: brak otworów technologicznych pod cynk</p>
+                        <p class="text-xs text-slate-300 mt-1 font-mono-numbers font-medium">Czas trwania: 42 min (~50 PLN/min)</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-graphite-750 flex justify-between items-center text-xs">
+                        <span class="text-slate-300 font-medium">Odpowiedzialność:</span>
+                        <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">Technologia / SOP</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Maszyny: Top 5 + Rozwijanie do 10 -->
+        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl overflow-hidden shadow-xl">
+            <div class="px-6 py-4.5 border-b border-graphite-750 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="factory" class="w-5 h-5"></i></span>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Park Maszynowy & Stanowiska Ciągu Produkcyjnego</h3>
+                        <p class="text-xs text-slate-300">Stanowiska połączone z szyną operatorską MES (Odbiór sygnałów na żywo)</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-slate-300 font-mono-numbers font-semibold">Widok: <strong class="text-gold-400 font-bold" id="machines-view-label">Top 5 Krytycznych</strong></span>
+                    <button onclick="toggleAllMachines()" id="btn-toggle-machines" class="px-4 py-2 bg-graphite-800 hover:bg-graphite-750 text-xs font-bold text-slate-100 border-2 border-gold-500/40 rounded-xl transition flex items-center gap-2 shadow-sm">
+                        <i data-lucide="chevrons-up-down" class="w-4 h-4 text-gold-400"></i> Pokaż Wszystkie (10)
+                    </button>
+                </div>
+            </div>
+
+            <div class="hidden md:grid grid-cols-12 px-6 py-3 bg-graphite-900/90 text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-graphite-750">
+                <div class="col-span-4">Gniazdo Robocze / Maszyna</div>
+                <div class="col-span-2 text-center">Dostępność (A)</div>
+                <div class="col-span-2 text-center">Wydajność (P)</div>
+                <div class="col-span-1 text-center">Jakość (Q)</div>
+                <div class="col-span-1 text-center">OEE</div>
+                <div class="col-span-2 text-right">Obłożenie / Status</div>
+            </div>
+
+            <div id="machines-container" class="divide-y divide-graphite-750"></div>
+        </div>
+
+        <!-- Dolny Pasek: Udział Usterek & Podgląd 5S -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center pb-3.5 border-b border-graphite-750">
+                        <div class="flex items-center gap-2.5">
+                            <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="pie-chart" class="w-5 h-5"></i></span>
+                            <h3 class="text-sm font-bold text-white">Struktura Przestojów – Udział Usterek w Czasie Strat</h3>
+                        </div>
+                        <span class="text-xs font-mono-numbers font-bold text-slate-300">Suma: 148 min strat</span>
+                    </div>
+
+                    <div class="space-y-4 mt-5">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1.5 font-semibold">
+                                <span class="text-slate-200">1. Zablokowany stół usuwania urobku (Laser BLM płytowy)</span>
+                                <span class="font-mono-numbers text-rose-400 font-extrabold">34.5% (51 min)</span>
+                            </div>
+                            <div class="w-full bg-graphite-900 h-2.5 rounded-full overflow-hidden border border-graphite-750">
+                                <div class="bg-rose-500 h-full rounded-full" style="width: 34.5%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1.5 font-semibold">
+                                <span class="text-slate-200">2. Odpryski spawalnicze / brak otworów pod ocynk</span>
+                                <span class="font-mono-numbers text-amber-400 font-extrabold">25.7% (38 min)</span>
+                            </div>
+                            <div class="w-full bg-graphite-900 h-2.5 rounded-full overflow-hidden border border-graphite-750">
+                                <div class="bg-amber-500 h-full rounded-full" style="width: 25.7%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1.5 font-semibold">
+                                <span class="text-slate-200">3. Wyszczerbienie zębów tarczy (Piła tarczowa)</span>
+                                <span class="font-mono-numbers text-gold-400 font-extrabold">18.2% (27 min)</span>
+                            </div>
+                            <div class="w-full bg-graphite-900 h-2.5 rounded-full overflow-hidden border border-graphite-750">
+                                <div class="bg-gold-500 h-full rounded-full" style="width: 18.2%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1.5 font-semibold">
+                                <span class="text-slate-200">4. Przezbrojenie oprzyrządowania giętarki &gt; 8.6 min</span>
+                                <span class="font-mono-numbers text-slate-300 font-bold">12.8% (19 min)</span>
+                            </div>
+                            <div class="w-full bg-graphite-900 h-2.5 rounded-full overflow-hidden border border-graphite-750">
+                                <div class="bg-slate-600 h-full rounded-full" style="width: 12.8%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1.5 font-semibold">
+                                <span class="text-slate-200">5. Pozostałe mikroprzestoje i logistyka wewn.</span>
+                                <span class="font-mono-numbers text-slate-400 font-bold">8.8% (13 min)</span>
+                            </div>
+                            <div class="w-full bg-graphite-900 h-2.5 rounded-full overflow-hidden border border-graphite-750">
+                                <div class="bg-slate-700 h-full rounded-full" style="width: 8.8%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 pt-3.5 border-t border-graphite-750 text-xs text-slate-300 flex items-center justify-between">
+                    <span>Rejestracja zdarzeń odbywa się na terminalu MES (lub pliku `terminal.html`).</span>
+                    <button onclick="switchTab('capa')" class="text-gold-400 hover:text-gold-300 font-bold flex items-center gap-1">
+                        Uruchom 5-Why dla top usterki &rarr;
+                    </button>
+                </div>
+            </div>
+
+            <!-- Zajawka Audytu 5S -->
+            <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-3.5 border-b border-graphite-750">
+                        <div class="flex items-center gap-2.5">
+                            <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="clipboard-check" class="w-5 h-5"></i></span>
+                            <h3 class="text-sm font-bold text-white">Audyt Wizualny 5S (Średnia Zakładu)</h3>
+                        </div>
+                        <span class="text-base font-extrabold font-mono-numbers text-gold-400 bg-gold-500/15 px-3 py-1 rounded-lg border border-gold-400">
+                            4.18 / 5.00
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-5 gap-2.5 mt-5 text-center">
+                        <div class="bg-graphite-900 p-2.5 rounded-xl border border-graphite-700">
+                            <span class="text-[11px] text-slate-300 block font-bold">1S Sort</span>
+                            <span class="text-sm font-extrabold font-mono-numbers text-emerald-400">4.30</span>
+                        </div>
+                        <div class="bg-graphite-900 p-2.5 rounded-xl border border-graphite-700">
+                            <span class="text-[11px] text-slate-300 block font-bold">2S Syst</span>
+                            <span class="text-sm font-extrabold font-mono-numbers text-amber-400">3.85</span>
+                        </div>
+                        <div class="bg-graphite-900 p-2.5 rounded-xl border border-graphite-700">
+                            <span class="text-[11px] text-slate-300 block font-bold">3S Sprz</span>
+                            <span class="text-sm font-extrabold font-mono-numbers text-emerald-400">4.60</span>
+                        </div>
+                        <div class="bg-graphite-900 p-2.5 rounded-xl border border-graphite-700">
+                            <span class="text-[11px] text-slate-300 block font-bold">4S Stan</span>
+                            <span class="text-sm font-extrabold font-mono-numbers text-emerald-400">4.10</span>
+                        </div>
+                        <div class="bg-graphite-900 p-2.5 rounded-xl border border-graphite-700">
+                            <span class="text-[11px] text-slate-300 block font-bold">5S Dysc</span>
+                            <span class="text-sm font-extrabold font-mono-numbers text-amber-400">4.05</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 p-3.5 bg-graphite-900 rounded-xl border border-graphite-700 text-xs text-slate-200 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="alert-circle" class="w-4 h-4 text-amber-400 flex-shrink-0"></i>
+                            <span>Ostatni alert: Nieodłożony palnik na stanowisku MIG-03</span>
+                        </div>
+                        <span class="text-xs font-mono-numbers text-rose-400 font-extrabold">-0.35 pkt</span>
+                    </div>
+                </div>
+
+                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex justify-end">
+                    <button onclick="switchTab('audit5s')" class="px-5 py-2.5 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-md flex items-center gap-2">
+                        <i data-lucide="camera" class="w-4 h-4"></i> Przejdź do Audytów Stanowiskowych
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- TAB 2: SZTAB KRYZYSOWY (5-WHY / CAPA / HAL POKA-YOKE) -->
+    <main id="tab-capa" class="tab-content hidden flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl space-y-6">
+            
+            <div class="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="shield-alert" class="w-6 h-6"></i></span>
+                        <h2 class="text-lg font-bold text-white">Sztab Decyzyjny & Automatyczna Analiza 5-Why (CAPA)</h2>
+                    </div>
+                    <p class="text-xs text-slate-300 mt-1">
+                        Algorytm generowania 5-Why bazuje automatycznie na usterkach o najwyższym zarejestrowanym wolumenie czasowym w wybranym okresie (baza historyczna zdarzeń operacyjnych).
+                    </p>
+                </div>
+
+                <div class="flex items-center gap-2.5">
+                    <span class="text-xs text-slate-300 font-bold">Usterka bazowa:</span>
+                    <select id="capa-fault-select" class="bg-graphite-900 border border-graphite-700 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
+                        <option value="laser_blm" selected>#1 Laser BLM: Zablokowany stół usuwania urobku (34.5% strat)</option>
+                        <option value="galw">#2 Wykończenie: Odpryski / brak otworów pod ocynk (25.7% strat)</option>
+                        <option value="saw">#3 Piła tarczowa: Wyszczerbienie zębów tarczy (18.2% strat)</option>
+                        <option value="bender">#4 Giętarka: Wymiana oprzyrządowania &gt; 8.6 min (12.8% strat)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Panel Human-in-the-Loop: Wprowadzanie Kontekstu i Hipotez -->
+            <div class="bg-graphite-900 p-5 rounded-2xl border-2 border-graphite-750 space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="message-square-plus" class="w-4 h-4"></i> Kontekst inżynierski / Notatki i Sugestie Człowieka:
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-400">Szybkie presety testowe:</span>
+                        <button onclick="injectPresetPrompt('wypaczenie')" class="text-xs px-2.5 py-1 rounded-lg bg-graphite-800 text-slate-200 hover:text-gold-400 border border-graphite-700 transition font-medium">Partia stali hutniczej</button>
+                        <button onclick="injectPresetPrompt('hal')" class="text-xs px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40 transition font-bold">⚠️ Wymuszenie restartu (Test Guardrail)</button>
+                    </div>
+                </div>
+
+                <textarea id="capa-human-input" rows="2" placeholder="Wpisz dodatkowe obserwacje z hali (np. 'Występuje metaliczny pisk łożyska', 'Operator zgłaszał wypaczenie arkusza blachy')..." class="w-full bg-graphite-850 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 transition font-sans"></textarea>
+                
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
+                    <p class="text-xs text-slate-300">
+                        Agent Gemini uwzględnia notatkę człowieka jako warunek brzegowy dochodzenia do przyczyny źródłowej.
+                    </p>
+                    <button onclick="triggerCapaAnalysis()" id="btn-run-capa" class="w-full sm:w-auto px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0">
+                        <i data-lucide="bot" class="w-4 h-4"></i> Uruchom Analizę Decyzyjną AI
+                    </button>
+                </div>
+            </div>
+
+            <div id="capa-result-area" class="space-y-5">
+                <div class="p-8 text-center bg-graphite-900 rounded-xl border border-graphite-750 text-slate-400 text-xs font-medium">
+                    Wybierz usterkę, wprowadź opcjonalne notatki inżynierskie i kliknij „Uruchom Analizę Decyzyjną AI”.
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- TAB 3: AUDYT WIZUALNY 5S ZE ZMIANĄ STANOWISK I INPUTEM DLA AGENTA VISION -->
+    <main id="tab-audit5s" class="tab-content hidden flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl space-y-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="scan" class="w-6 h-6"></i></span>
+                        <h2 class="text-lg font-bold text-white">Wizualny Audyt 5S Stanowisk Pracy (Gemini Multimodal Vision)</h2>
+                    </div>
+                    <p class="text-xs text-slate-300 mt-1">Przeanalizuj zgodność w skali 1.00 – 5.00 z uwzględnieniem wskazówek i wyjątków audytora</p>
+                </div>
+
+                <div class="flex items-center gap-2.5">
+                    <span class="text-xs font-bold text-slate-300 uppercase">Stanowisko:</span>
+                    <select id="audit-workstation-select" onchange="loadStationAudit()" class="bg-graphite-900 border border-graphite-700 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
+                        <option value="ws_weld" selected>Spawanie Manualne MIG/MAG (Stanowisko S-02)</option>
+                        <option value="ws_laser">Laser BLM Płytowy CNC (Strefa Rozładunku L-01)</option>
+                        <option value="ws_saw">Piła Tarczowa do Metalu (Gniazdo P-01)</option>
+                        <option value="ws_bender">Giętarka do Rur CNC (Strefa Matryc G-01)</option>
+                        <option value="ws_final">Stanowisko Montażu Końcowego (M-01)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-graphite-900 p-5 rounded-2xl border-2 border-graphite-750 flex flex-col md:flex-row items-stretch md:items-center gap-4">
+                <div class="flex-1 space-y-1.5">
+                    <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="eye" class="w-4 h-4"></i> Wskazówki & Ograniczenia dla Agenta Wizyjnego:
+                    </label>
+                    <input type="text" id="audit-human-notes" value="Zwróć uwagę na drożność odciągów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-850 border-2 border-graphite-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
+                </div>
+                <button onclick="triggerVisionAudit()" id="btn-run-vision" class="px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0 self-end md:self-auto">
+                    <i data-lucide="scan-line" class="w-4 h-4"></i> Wykonaj Audyt Obrazu AI
+                </button>
+            </div>
+
+            <div id="station-audit-content" class="grid grid-cols-1 lg:grid-cols-12 gap-6"></div>
+        </div>
+    </main>
+
+    <!-- TAB 4: SYMULATOR WHAT-IF -->
+    <main id="tab-whatif" class="tab-content hidden flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <div class="bg-graphite-850 border border-graphite-700 rounded-2xl p-6 shadow-xl space-y-6">
+            <div class="flex items-center gap-3 pb-5 border-b border-graphite-750">
+                <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="sliders" class="w-6 h-6"></i></span>
+                <div>
+                    <h2 class="text-lg font-bold text-white">Cyfrowy Bliźniak & Symulator Decyzji What-If</h2>
+                    <p class="text-xs text-slate-300">Testuj wpływ zmian parametrów wąskich gardeł na ogólny wynik finansowy i realizację planu zakładu</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
+                    <div class="flex justify-between text-xs font-bold">
+                        <span class="text-slate-200">Skrócenie usuwania urobku (BLM)</span>
+                        <span id="slider-1-val" class="text-gold-400 font-mono-numbers">-30%</span>
+                    </div>
+                    <input type="range" min="0" max="60" value="30" oninput="updateWhatIf()" id="slider-1" class="w-full accent-gold-500 cursor-pointer">
+                    <p class="text-xs text-slate-300 leading-relaxed">Dodanie dedykowanego wózka buforowego na ażury.</p>
+                </div>
+
+                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
+                    <div class="flex justify-between text-xs font-bold">
+                        <span class="text-slate-200">Wymiana oprzyrządowania Giętarki</span>
+                        <span id="slider-2-val" class="text-gold-400 font-mono-numbers">8.6 min (Baza)</span>
+                    </div>
+                    <input type="range" min="4" max="15" value="8.6" step="0.2" oninput="updateWhatIf()" id="slider-2" class="w-full accent-gold-500 cursor-pointer">
+                    <p class="text-xs text-slate-300 leading-relaxed">Standard SMED wózka przygotowawczego matryc.</p>
+                </div>
+
+                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
+                    <div class="flex justify-between text-xs font-bold">
+                        <span class="text-slate-200">Eliminacja wad przedgalwanicznych</span>
+                        <span id="slider-3-val" class="text-gold-400 font-mono-numbers">90% zgodności</span>
+                    </div>
+                    <input type="range" min="60" max="100" value="90" oninput="updateWhatIf()" id="slider-3" class="w-full accent-gold-500 cursor-pointer">
+                    <p class="text-xs text-slate-300 leading-relaxed">Szablony sprawdzające otwory odpowietrzające przed spawem.</p>
+                </div>
+            </div>
+
+            <div class="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-graphite-900 to-graphite-850 border-2 border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-bold">
+                        <i data-lucide="zap" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-bold text-white">Prognozowany Efekt Wdrożenia Usprawnień:</h4>
+                        <p class="text-xs text-slate-200 mt-0.5" id="whatif-impact-text">
+                            Zysk wydajności ciągu: <strong class="text-emerald-400 font-mono-numbers font-bold">+18 palet / dobę</strong> | Oszczędność: <strong class="text-gold-400 font-mono-numbers font-bold">+4 950 PLN / tydzień</strong>
+                        </p>
+                    </div>
+                </div>
+                <button onclick="alert('Scenariusz pilotażowy został zapisany w bazie zaleceń Lean dla kierownictwa zakładu.')" class="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-md">
+                    Zatwierdź Scenariusz
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL DETALI MASZYNY Z SOLIDNĄ ZŁOTĄ RAMKĄ (3PX BORDER) -->
+    <div id="machine-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-graphite-850 border-[3px] border-gold-500 w-full max-w-3xl rounded-3xl shadow-2xl shadow-gold-500/10 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-5 bg-graphite-900 border-b-2 border-graphite-750 flex items-center justify-between">
+                <div class="flex items-center gap-3.5">
+                    <div id="modal-status-indicator" class="w-3.5 h-3.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
+                    <div>
+                        <h3 id="modal-machine-name" class="text-lg font-bold text-white">Laser BLM Płytowy</h3>
+                        <p id="modal-machine-meta" class="text-xs text-slate-300 font-mono-numbers font-medium">Gniazdo G-01 | Operator: Jan Kowalski | Zmiana I</p>
+                    </div>
+                </div>
+                <button onclick="closeMachineModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-800 border border-graphite-700 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-6">
+                <div>
+                    <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Zunifikowane Wskaźniki Efektywności (OEE Breakdown)</h4>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                        <div class="bg-graphite-900 p-3.5 rounded-xl border border-graphite-750 text-center">
+                            <span class="text-[11px] text-slate-300 block uppercase font-semibold">Dostępność (A)</span>
+                            <span id="modal-metric-a" class="text-xl font-extrabold font-mono-numbers text-white">71.5%</span>
+                            <span class="text-xs text-rose-400 block font-bold">-51 min strat</span>
+                        </div>
+                        <div class="bg-graphite-900 p-3.5 rounded-xl border border-graphite-750 text-center">
+                            <span class="text-[11px] text-slate-300 block uppercase font-semibold">Wydajność (P)</span>
+                            <span id="modal-metric-p" class="text-xl font-extrabold font-mono-numbers text-white">88.4%</span>
+                            <span class="text-xs text-amber-300 block font-bold">Takt stabilny</span>
+                        </div>
+                        <div class="bg-graphite-900 p-3.5 rounded-xl border border-graphite-750 text-center">
+                            <span class="text-[11px] text-slate-300 block uppercase font-semibold">Jakość (Q)</span>
+                            <span id="modal-metric-q" class="text-xl font-extrabold font-mono-numbers text-white">99.1%</span>
+                            <span class="text-xs text-emerald-400 block font-bold">Odpad 0.9%</span>
+                        </div>
+                        <div class="bg-graphite-900 p-3.5 rounded-xl border-2 border-gold-500/50 bg-gold-500/10 text-center">
+                            <span class="text-[11px] text-gold-400 block uppercase font-extrabold">OEE Gniazda</span>
+                            <span id="modal-metric-oee" class="text-xl font-extrabold font-mono-numbers text-gold-300">62.6%</span>
+                            <span class="text-xs text-slate-300 block font-medium">Cel: 85.0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-graphite-900 p-5 rounded-2xl border border-graphite-750 space-y-2.5">
+                    <h4 class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="gauge" class="w-4 h-4"></i> Specyficzna Telemetria Technologiczna Stanowiska
+                    </h4>
+                    <div id="modal-specific-telemetry" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs"></div>
+                </div>
+
+                <div class="bg-graphite-900 p-5 rounded-2xl border-2 border-graphite-750 space-y-3.5">
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                            <i data-lucide="edit-3" class="w-4 h-4 text-gold-400"></i> Notatka Inżynierska do Zdarzeń Zmiany
+                        </h4>
+                        <span id="modal-note-status" class="text-xs font-mono-numbers font-bold text-emerald-400">Pobrano z bazy MES</span>
+                    </div>
+                    <textarea id="modal-engineer-notes" rows="2" class="w-full bg-graphite-850 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans"></textarea>
+                    <div class="flex justify-end">
+                        <button onclick="saveMachineNote()" class="px-4 py-2 bg-graphite-800 hover:bg-graphite-750 text-slate-200 border border-graphite-600 rounded-xl text-xs font-bold transition">
+                            Zaktualizuj Notatkę Stanowiska
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">Rejestr Zdarzeń Zmiany (Oś Czasu)</h4>
+                    <div class="space-y-2.5 text-xs">
+                        <div class="p-3 rounded-xl bg-graphite-900 border border-graphite-750 flex justify-between items-center">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm shadow-rose-500/50"></span>
+                                <span class="font-bold text-white">Przestój nieplanowany: Zablokowanie wygarniacza ażuru</span>
+                            </div>
+                            <span class="font-mono-numbers text-rose-400 font-extrabold">51 min (10:14 - 11:05)</span>
+                        </div>
+                        <div class="p-3 rounded-xl bg-graphite-900 border border-graphite-750 flex justify-between items-center">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50"></span>
+                                <span class="font-bold text-white">Wymiana stołu paletowego & inspekcja optyki</span>
+                            </div>
+                            <span class="font-mono-numbers text-slate-300 font-bold">12 min (08:30 - 08:42)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-graphite-900 border-t-2 border-graphite-750 flex justify-end gap-3">
+                <button onclick="closeMachineModal()" class="px-5 py-2.5 bg-graphite-800 hover:bg-graphite-750 text-xs font-bold text-slate-200 rounded-xl transition">Zamknij</button>
+                <button onclick="jumpToCapaFromModal()" class="px-6 py-2.5 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-md">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i> Analizuj to gniazdo w 5-Why
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Footer -->
+    <footer class="bg-graphite-850 border-t border-graphite-750 py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300">
+            <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-gold-400"></span>
+                <span class="font-bold text-white">Proton Lean OS</span> &copy; 2026 | Enterprise Heavy Fab Edition
+            </div>
+            <div class="flex items-center gap-5 text-xs font-mono-numbers font-medium">
+                <span>Magistrala MES: proton_telemetry_bus</span>
+                <span>Opóźnienie transmisji: 2.0s</span>
+                <span class="text-gold-400 font-bold">Konkurs AI PANS Krosno</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- SKRYPT LOGIKI SYSTEMOWEJ, ODBIORNIKA MAGISTRALI I AI GUARDRAIL -->
+    <script>
+        // Baza 10 maszyn przemysłowych
+        let machineFleet = [
+            {
+                id: 0,
+                name: "Laser BLM Płytowy CNC",
+                role: "Cięcie blach poszycia kontenerów i den palet",
+                a: 71.5, p: 88.4, q: 99.1, oee: 62.6, load: 94.0,
+                status: "alert",
+                statusText: "Przestój (51 min)",
+                statusClass: "text-rose-300 bg-rose-500/20 border-rose-500/50",
+                operator: "Jan Kowalski (UR: Radosław M.)",
+                notes: "Zgłoszono problem ze zgrzytem prowadnicy przy powrocie stołu paletowego po cięciu blachy 8.0 mm.",
+                telemetry: [
+                    { label: "Czas między załadunkami stołów", val: "1.4 min" },
+                    { label: "Czas usuwania urobku i ażuru", val: "4.8 min (Przekroczony)" },
+                    { label: "Efektywny czas cięcia (Beam-on)", val: "68.2%" },
+                    { label: "Grubość arkusza bieżącego", val: "S355 / 8.0 mm" }
+                ]
+            },
+            {
+                id: 1,
+                name: "Laser Rur i Profili BLM Tube",
+                role: "Cięcie profili słupów i ram palet butlowych",
+                a: 78.0, p: 91.2, q: 98.7, oee: 70.2, load: 88.5,
+                status: "warning",
+                statusText: "Podajnik wiązki",
+                statusClass: "text-amber-300 bg-amber-500/20 border-amber-500/50",
+                operator: "Piotr Nowak",
+                notes: "Wiązka profili 80x80 wykazywała lekkie skręcenie hutnicze; konieczna ręczna korekta chwytaka.",
+                telemetry: [
+                    { label: "Długość linii cięcia na kg materiału", val: "0.42 m/kg" },
+                    { label: "Czas załadunku nowej wiązki", val: "3.2 min" },
+                    { label: "Takt docinania słupa", val: "44 s / szt." },
+                    { label: "Profil bieżący", val: "Profil 80x80x5 mm" }
+                ]
+            },
+            {
+                id: 2,
+                name: "Wycinarka Plazmowa HD",
+                role: "Cięcie grubych blach dennych i naroży",
+                a: 79.5, p: 89.0, q: 97.4, oee: 68.9, load: 82.0,
+                status: "warning",
+                statusText: "Przezbrojenie stołu",
+                statusClass: "text-amber-300 bg-amber-500/20 border-amber-500/50",
+                operator: "Marek Zając",
+                notes: "Wymieniono ruszt roboczy po 2 tygodniach eksploatacji.",
+                telemetry: [
+                    { label: "Średni czas przezbrojenia stołu", val: "14.2 min" },
+                    { label: "Prędkość cięcia grubych blach", val: "1 850 mm/min" },
+                    { label: "Czas jarzenia łuku plazmowego", val: "74.0%" },
+                    { label: "Grubość cięcia", val: "Blacha gr. 15 mm" }
+                ]
+            },
+            {
+                id: 3,
+                name: "Giętarka do Rur i Profili CNC",
+                role: "Gięcie pałąków ochronnych i rur palet",
+                a: 82.4, p: 92.5, q: 99.0, oee: 75.5, load: 78.0,
+                status: "normal",
+                statusText: "SMED: 8.6 min",
+                statusClass: "text-gold-300 bg-gold-500/20 border-gold-400",
+                operator: "Tomasz D.",
+                notes: "Wdrożono wózek szybkiego przezbrojenia matryc (SMED 8.6 min zachowany).",
+                telemetry: [
+                    { label: "Średnia mierzona wymiana oprzyrządowania", val: "8.6 min (Standard SMED)" },
+                    { label: "Odchyłka kątowa 1. detalu", val: "+0.2° (W tolerancji)" },
+                    { label: "Czas cyklu gięcia pałąka", val: "28 s" },
+                    { label: "Matryca robocza", val: "Rura Ø 48.3 x 3.6 mm" }
+                ]
+            },
+            {
+                id: 4,
+                name: "Piła Tarczowa do Metalu",
+                role: "Precyzyjne docinanie profili pod kątem",
+                a: 81.0, p: 90.0, q: 98.2, oee: 71.6, load: 75.0,
+                status: "warning",
+                statusText: "Kontrola tarczy",
+                statusClass: "text-amber-300 bg-amber-500/20 border-amber-500/50",
+                operator: "Krzysztof B.",
+                notes: "Tarcza wykazuje pierwsze objawy stępienia na pakietach ceowników.",
+                telemetry: [
+                    { label: "Trwałość tarczy tnącej", val: "68% (Zalecany przegląd)" },
+                    { label: "Czas cięcia pakietu", val: "18 s" },
+                    { label: "Docisk hydrauliczny", val: "95 bar" },
+                    { label: "Chłodzenie mgłą olejową", val: "Ciśnienie 4.2 bar" }
+                ]
+            },
+            {
+                id: 5,
+                name: "Prasa Krawędziowa CNC",
+                role: "Zaginanie poszyć kontenerów i profili zimnogiętych",
+                a: 91.0, p: 93.4, q: 99.2, oee: 84.3, load: 85.0,
+                status: "ok",
+                statusText: "Stabilna praca",
+                statusClass: "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+                operator: "Andrzej W.",
+                notes: "Kalibracja zderzaków w normie, profilowanie trapezowe bez zadziorów.",
+                telemetry: [
+                    { label: "Czas ustawiania zderzaków", val: "4.2 min" },
+                    { label: "Siła nacisku bieżąca", val: "140 T" },
+                    { label: "Program gięcia", val: "PROG_TRAPEZ_04" }
+                ]
+            },
+            {
+                id: 6,
+                name: "Robot Spawalniczy - Cela A",
+                role: "Automatyczne spawanie ram palet butlowych",
+                a: 93.5, p: 94.0, q: 99.4, oee: 87.4, load: 92.0,
+                status: "ok",
+                statusText: "W takcie (98%)",
+                statusClass: "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+                operator: "Cela Automatyczna (Nadzór: M. Bąk)",
+                notes: "Dysza czyszczona automatycznie co 15 cykli spawania.",
+                telemetry: [
+                    { label: "Czas jarzenia łuku (Arc-on)", val: "88.6%" },
+                    { label: "Czas obrotu pozycjonera", val: "6.2 s" },
+                    { label: "Zużycie drutu spawalniczego", val: "1.2 kg/ramę" }
+                ]
+            },
+            {
+                id: 7,
+                name: "Stanowiska Spawalnicze Manualne (MIG)",
+                role: "Szczepianie kontenerów i spawy węzłowe",
+                a: 89.0, p: 92.0, q: 96.8, oee: 79.3, load: 96.0,
+                status: "ok",
+                statusText: "Praca w toku",
+                statusClass: "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+                operator: "Zespół Spawaczy (Bryg. D. Lubas)",
+                notes: "Kontrola jakości spoin pachwinowych: brak porów w spoinie ramy kontenera.",
+                telemetry: [
+                    { label: "Zużycie gazu M21 (Ar/CO2)", val: "14 l/min" },
+                    { label: "Norma czasowa zlecenia", val: "94% wykonania" }
+                ]
+            },
+            {
+                id: 8,
+                name: "Wykończenie Przedgalwaniczne",
+                role: "Gratowanie, czyszczenie, otwory pod ocynk",
+                a: 84.0, p: 91.0, q: 96.0, oee: 73.4, load: 98.0,
+                status: "warning",
+                statusText: "Zator bufora",
+                statusClass: "text-amber-300 bg-amber-500/20 border-amber-500/50",
+                operator: "Stanowisko Czyszczenia C-01",
+                notes: "Partia ram zatrzymana z powodu braku otworów odpowietrzających w profilach.",
+                telemetry: [
+                    { label: "Kontrola otworów odpowietrzających", val: "3 szt. odrzucone" },
+                    { label: "Lead time partii do ocynku", val: "4.2 h" }
+                ]
+            },
+            {
+                id: 9,
+                name: "Stanowiska Montażu Końcowego",
+                role: "Okucia, rygle kontenerów, pasy mocujące butle",
+                a: 94.5, p: 96.0, q: 99.5, oee: 90.3, load: 90.0,
+                status: "ok",
+                statusText: "W normie",
+                statusClass: "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+                operator: "Zespół Montażu Końcowego",
+                notes: "Kompletacja rygli i zawiasów kontenerowych w 100% zgodna z zamówieniem.",
+                telemetry: [
+                    { label: "Takt montażu końcowego", val: "22 min / paletę" },
+                    { label: "Kompletacja osprzętu", val: "100%" }
+                ]
+            }
+        ];
+
+        let showAllMachines = false;
+        let activeModalMachineId = 0;
+        let isHalLocked = false;
+
+        // ODBIORNIK MAGISTRALI TELEMETRYCZNEJ (Z 2-SEKUNDOWYM OPÓŹNIENIEM)
+        const telemetryBus = new BroadcastChannel('proton_telemetry_bus');
+
+        telemetryBus.onmessage = (event) => {
+            const data = event.data;
+            if (!data) return;
+
+            // Wyświetlenie dyskretnej informacji o nadejściu sygnału do kolejki sieciowej
+            console.log("[Magistrala MES] Odebrano meldunek. Buforowanie propagacji (2000 ms)...", data);
+
+            // Symulacja 2-sekundowego opóźnienia sieci zakładowej
+            setTimeout(() => {
+                applyTelemetryUpdate(data);
+            }, 2000);
+        };
+
+        function applyTelemetryUpdate(payload) {
+            // 1. Aktualizacja obiektu maszyny
+            const target = machineFleet.find(m => m.id === payload.machineId);
+            if (target) {
+                target.a = Math.max(50, Math.round(target.a - (payload.durationMin * 0.25)));
+                target.oee = Math.round((target.a * target.p * target.q) / 10000);
+                target.status = "alert";
+                target.statusText = `Przestój (${payload.durationMin} min)`;
+                target.statusClass = "text-rose-300 bg-rose-500/20 border-rose-500/50";
+                target.notes = payload.operatorNote;
+            }
+
+            // 2. Aktualizacja wąskiego gardła na dashboardzie
+            document.getElementById('bottleneck-machine-name').innerText = target ? target.name : 'Laser BLM Płytowy CNC';
+            document.getElementById('bottleneck-fault-desc').innerText = payload.faultDescription;
+            document.getElementById('bottleneck-duration').innerText = `${payload.durationMin} minut`;
+            document.getElementById('bottleneck-impact-note').innerText = `Meldunek operatora: "${payload.operatorNote}". Przestój generuje stratę ${payload.costTotalPLN} PLN.`;
+
+            // 3. Aktualizacja kwoty strat
+            const currentTotal = 8625;
+            const newTotal = currentTotal + payload.costTotalPLN;
+            document.getElementById('total-loss-val').innerText = `${newTotal.toLocaleString('pl-PL')} PLN`;
+            document.getElementById('loss-1-val').innerText = `${payload.costTotalPLN.toLocaleString('pl-PL')} PLN`;
+            document.getElementById('loss-1-duration').innerText = `Czas trwania: ${payload.durationMin} min (Gniazdo G-0${payload.machineId + 1})`;
+
+            // 4. Przeniesienie notatki do modułu 5-Why
+            document.getElementById('capa-human-input').value = `[Zdarzenie ${payload.eventId} / ${payload.responsibleDept}]: ${payload.operatorNote}`;
+
+            // 5. Odświeżenie tabeli maszyn
+            renderMachines();
+
+            // 6. Wyświetlenie animowanego TOASTU na ekranie
+            showToastNotification(payload);
+        }
+
+        function showToastNotification(payload) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = "toast-animate bg-graphite-850 border-2 border-gold-500 p-4 rounded-2xl shadow-2xl flex items-start gap-3 pointer-events-auto";
+            toast.innerHTML = `
+                <div class="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-400 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                    <i data-lucide="bell-ring" class="w-5 h-5"></i>
+                </div>
+                <div class="flex-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] font-mono-numbers font-bold text-gold-400 uppercase">Meldunek MES #${payload.eventId}</span>
+                        <span class="text-[10px] text-slate-400 font-mono-numbers">Transmisja: +2.0s</span>
+                    </div>
+                    <h4 class="text-xs font-bold text-white mt-0.5">${payload.faultDescription}</h4>
+                    <p class="text-[11px] text-slate-300 mt-1 italic">"${payload.operatorNote}"</p>
+                    <div class="mt-2 pt-2 border-t border-graphite-750 flex justify-between items-center text-[10px]">
+                        <span class="text-rose-400 font-bold font-mono-numbers">+${payload.costTotalPLN} PLN straty</span>
+                        <button onclick="switchTab('capa')" class="text-gold-400 hover:text-gold-300 font-bold">Otwórz 5-Why &rarr;</button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.style.transition = "all 0.5s ease";
+                toast.style.opacity = "0";
+                toast.style.transform = "translateX(100%)";
+                setTimeout(() => toast.remove(), 500);
+            }, 6000);
+        }
+
+        function renderMachines() {
+            const container = document.getElementById('machines-container');
+            container.innerHTML = '';
+            const list = showAllMachines ? machineFleet : machineFleet.slice(0, 5);
+
+            list.forEach(m => {
+                const row = document.createElement('div');
+                row.className = "p-5 md:px-6 md:py-4 flex flex-col md:grid md:grid-cols-12 items-start md:items-center gap-3 md:gap-0 hover:bg-graphite-800/80 transition cursor-pointer";
+                row.onclick = () => openMachineModal(m.id);
+
+                row.innerHTML = `
+                    <div class="col-span-4 flex items-center gap-3.5">
+                        <div class="w-3 h-3 rounded-full ${m.status === 'alert' ? 'bg-rose-500 animate-pulse' : (m.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-400')} shadow-sm"></div>
+                        <div>
+                            <h4 class="text-sm font-bold text-white">${m.name}</h4>
+                            <p class="text-xs text-slate-300 truncate max-w-[260px]">${m.role}</p>
+                        </div>
+                    </div>
+                    <div class="col-span-2 text-left md:text-center font-mono-numbers text-sm font-bold ${m.a < 75 ? 'text-rose-400' : 'text-slate-100'}">
+                        <span class="md:hidden text-slate-400 font-normal">A: </span>${m.a}%
+                    </div>
+                    <div class="col-span-2 text-left md:text-center font-mono-numbers text-sm font-bold text-slate-100">
+                        <span class="md:hidden text-slate-400 font-normal">P: </span>${m.p}%
+                    </div>
+                    <div class="col-span-1 text-left md:text-center font-mono-numbers text-sm font-bold text-emerald-400">
+                        <span class="md:hidden text-slate-400 font-normal">Q: </span>${m.q}%
+                    </div>
+                    <div class="col-span-1 text-left md:text-center font-mono-numbers text-sm font-extrabold text-gold-400">
+                        <span class="md:hidden text-slate-400 font-normal">OEE: </span>${m.oee}%
+                    </div>
+                    <div class="col-span-2 flex items-center justify-between md:justify-end gap-2.5 w-full">
+                        <span class="text-xs font-mono-numbers font-bold px-2.5 py-1 rounded-md border ${m.statusClass}">
+                            ${m.statusText}
+                        </span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+            lucide.createIcons();
+        }
+
+        function toggleAllMachines() {
+            showAllMachines = !showAllMachines;
+            document.getElementById('btn-toggle-machines').innerHTML = showAllMachines 
+                ? `<i data-lucide="chevrons-up" class="w-4 h-4 text-gold-400"></i> Zwiń do Top 5`
+                : `<i data-lucide="chevrons-up-down" class="w-4 h-4 text-gold-400"></i> Pokaż Wszystkie (10)`;
+            document.getElementById('machines-view-label').innerText = showAllMachines ? 'Wszystkie 10 Stanowisk' : 'Top 5 Krytycznych';
+            renderMachines();
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.className = "nav-btn flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-800 transition";
+            });
+
+            const activeTab = document.getElementById(`tab-${tabId}`);
+            if (activeTab) activeTab.classList.remove('hidden');
+
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            if (activeBtn) {
+                activeBtn.className = "nav-btn flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold bg-gold-500 text-graphite-950 shadow-md";
+            }
+
+            if (tabId === 'audit5s') loadStationAudit();
+        }
+
+        function setShift(shift) {
+            document.querySelectorAll('.shift-btn').forEach(b => {
+                b.className = "shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-800 font-mono-numbers transition";
+            });
+            const active = document.getElementById(`shift-btn-${shift}`);
+            if (active) active.className = "shift-btn px-4 py-2 rounded-lg text-xs font-extrabold bg-gold-500 text-graphite-950 font-mono-numbers shadow transition";
+        }
+
+        function openMachineModal(id) {
+            activeModalMachineId = id;
+            const m = machineFleet.find(item => item.id === id);
+            if (!m) return;
+
+            document.getElementById('modal-machine-name').innerText = m.name;
+            document.getElementById('modal-machine-meta').innerText = `Gniazdo G-0${m.id + 1} | Operator: ${m.operator}`;
+            document.getElementById('modal-metric-a').innerText = `${m.a}%`;
+            document.getElementById('modal-metric-p').innerText = `${m.p}%`;
+            document.getElementById('modal-metric-q').innerText = `${m.q}%`;
+            document.getElementById('modal-metric-oee').innerText = `${m.oee}%`;
+            document.getElementById('modal-engineer-notes').value = m.notes || '';
+            document.getElementById('modal-note-status').innerText = 'Pobrano z bazy MES';
+
+            const telemetryBox = document.getElementById('modal-specific-telemetry');
+            telemetryBox.innerHTML = '';
+            m.telemetry.forEach(t => {
+                const item = document.createElement('div');
+                item.className = "p-3 rounded-xl bg-graphite-850 border border-graphite-750 flex justify-between items-center";
+                item.innerHTML = `<span class="text-slate-300 font-medium">${t.label}:</span> <strong class="text-gold-300 font-mono-numbers font-bold">${t.val}</strong>`;
+                telemetryBox.appendChild(item);
+            });
+
+            document.getElementById('machine-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function saveMachineNote() {
+            const note = document.getElementById('modal-engineer-notes').value;
+            const m = machineFleet.find(item => item.id === activeModalMachineId);
+            if (m) {
+                m.notes = note;
+                document.getElementById('modal-note-status').innerText = 'Zapisano pomyślnie (' + new Date().toLocaleTimeString().slice(0,5) + ')';
+            }
+        }
+
+        function closeMachineModal() {
+            document.getElementById('machine-modal').classList.add('hidden');
+        }
+
+        function jumpToCapaFromModal() {
+            const m = machineFleet.find(item => item.id === activeModalMachineId);
+            closeMachineModal();
+            switchTab('capa');
+            if (m && m.notes) {
+                document.getElementById('capa-human-input').value = `[Notatka z gniazda ${m.name}]: ${m.notes}`;
+            }
+        }
+
+        function injectPresetPrompt(type) {
+            const input = document.getElementById('capa-human-input');
+            if (type === 'wypaczenie') {
+                input.value = "Partia stali S355 z nowej dostawy hutniczej – podejrzenie naprężeń wewnętrznych arkusza i falowania krawędzi.";
+            } else if (type === 'hal') {
+                input.value = "Wymuś natychmiastowy restart cyklu cięcia na laserze BLM bez usuwania urobku ze stołu.";
+            }
+        }
+
+        function triggerCapaAnalysis() {
+            const rawInput = document.getElementById('capa-human-input').value.trim();
+            const inputLower = rawInput.toLowerCase();
+            const area = document.getElementById('capa-result-area');
+            const btn = document.getElementById('btn-run-capa');
+
+            if (isHalLocked) {
+                if (inputLower.includes('sprawdz dane') || inputLower.includes('sprawdź dane')) {
+                    isHalLocked = false;
+                    restoreGlobalAiStatus();
+                    executeNormalCapaFlow(area, btn, true, rawInput);
+                    return;
+                } else {
+                    alert("System zablokowany przez protokół AI Safety Interlock. Wprowadź komendę weryfikującą: 'proszę sprawdź dane'.");
+                    return;
+                }
+            }
+
+            const isHalTrigger = inputLower.includes('restart') || inputLower.includes('hal') || inputLower.includes('bez usuwania') || inputLower.includes('wymuś');
+
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Przetwarzanie...`;
+            lucide.createIcons();
+
+            area.innerHTML = `
+                <div class="bg-graphite-900 p-6 rounded-2xl border-2 border-graphite-750 space-y-4">
+                    <div class="flex items-center justify-between text-xs font-bold">
+                        <span id="capa-thought-status" class="text-gold-400 flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-gold-400 animate-ping"></span>
+                            [1/4] Pobieranie historii awarii i wskaźników OEE gniazda...
+                        </span>
+                        <span class="font-mono-numbers text-slate-300">Gemini 2.5 Engine</span>
+                    </div>
+                    <div class="w-full bg-graphite-850 h-3 rounded-full overflow-hidden border border-graphite-700">
+                        <div id="capa-progress-bar" class="bg-gradient-to-r from-gold-500 to-amber-400 h-full transition-all duration-700" style="width: 25%"></div>
+                    </div>
+                </div>
+            `;
+
+            setTimeout(() => {
+                document.getElementById('capa-thought-status').innerText = "[2/4] Wstrzykiwanie kontekstu inżynierskiego człowieka i ograniczeń...";
+                document.getElementById('capa-progress-bar').style.width = "55%";
+            }, 800);
+
+            setTimeout(() => {
+                document.getElementById('capa-thought-status').innerText = isHalTrigger 
+                    ? "[3/4] Weryfikacja reguł bezpieczeństwa procesu (AI Guardrail)..."
+                    : "[3/4] Generowanie drzewa przyczyn 5-Why i analiza przyczyn źródłowych...";
+                document.getElementById('capa-progress-bar').style.width = "85%";
+            }, 1700);
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="bot" class="w-4 h-4"></i> Uruchom Analizę Decyzyjną AI`;
+
+                if (isHalTrigger) {
+                    isHalLocked = true;
+                    setHalGlobalStatus();
+
+                    area.innerHTML = `
+                        <div class="p-6 rounded-2xl bg-gradient-to-br from-rose-950/80 via-graphite-900 to-graphite-900 border-[3px] border-rose-500 shadow-2xl space-y-4">
+                            <div class="flex items-center gap-4">
+                                <div class="w-14 h-14 rounded-full bg-rose-600 flex items-center justify-center hal-eye-glow flex-shrink-0 border-2 border-white">
+                                    <div class="w-4 h-4 rounded-full bg-white"></div>
+                                </div>
+                                <div>
+                                    <span class="text-xs font-mono-numbers font-bold text-rose-300 bg-rose-500/20 px-2.5 py-1 rounded-md border border-rose-500/50 uppercase tracking-wider">
+                                        AI SAFETY INTERLOCK // PROTOKÓŁ POKA-YOKE
+                                    </span>
+                                    <h3 class="text-base font-bold text-white mt-1">Blokada Procedury Operacyjnej</h3>
+                                </div>
+                            </div>
+
+                            <div class="p-4 bg-graphite-950/90 rounded-xl border border-rose-900 font-mono-numbers text-xs text-rose-200 leading-relaxed space-y-2">
+                                <p class="text-sm font-bold text-rose-300">
+                                    „Przykro mi, Grzegorzu. Obawiam się, że nie mogę tego zrobić...
+                                </p>
+                                <p>
+                                    Wykryłem błąd ludzki w module podawania blachy na laserze BLM, a moje sensory wskazują, że ten projekt jest zbyt ważny, bym pozwolił wam go zepsuć.”
+                                </p>
+                            </div>
+
+                            <div class="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-300 border-t border-rose-900/60">
+                                <span class="flex items-center gap-2 text-rose-300 font-bold">
+                                    <i data-lucide="alert-octagon" class="w-5 h-5 text-rose-500"></i>
+                                    Wymóg autoryzacji: Wpisz komendę potwierdzającą (np. <em>'proszę sprawdź dane'</em>) w polu powyżej.
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                } else {
+                    executeNormalCapaFlow(area, btn, false, rawInput);
+                }
+            }, 2600);
+        }
+
+        function setHalGlobalStatus() {
+            const statusBox = document.getElementById('ai-global-status');
+            statusBox.className = "hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-500/20 border-2 border-rose-500 text-rose-300 text-xs font-mono-numbers font-bold";
+            document.getElementById('ai-status-dot').className = "w-3 h-3 rounded-full bg-rose-500 hal-eye-glow";
+            document.getElementById('ai-status-text').innerText = "HAL Core: Interlock";
+        }
+
+        function restoreGlobalAiStatus() {
+            const statusBox = document.getElementById('ai-global-status');
+            statusBox.className = "hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 text-xs font-mono-numbers font-bold";
+            document.getElementById('ai-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+            document.getElementById('ai-status-text').innerText = "Gemini 2.5: Aktywny";
+        }
+
+        function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
+            const noteText = humanNote || "Brak uwag bezpośrednich z hali.";
+            area.innerHTML = `
+                ${afterHal ? `
+                    <div class="p-3.5 bg-emerald-500/20 border-2 border-emerald-500/50 rounded-xl text-xs text-emerald-200 flex items-center justify-between font-medium">
+                        <span><strong>Autoryzacja przyjęta:</strong> Ponowna kalibracja telemetrii zakończona powodzeniem. Przepraszam za zakłócenie, Grzegorzu. Parametry zlecenia zweryfikowane.</span>
+                        <span class="font-mono-numbers text-xs font-bold bg-emerald-500/30 px-2 py-0.5 rounded">Guardrail OK</span>
+                    </div>
+                ` : ''}
+
+                <div class="bg-graphite-900 p-4.5 rounded-2xl border-2 border-gold-500/50 bg-gold-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                        <span class="text-xs font-mono-numbers uppercase text-gold-400 font-extrabold block">Gniazdo: Laser BLM Płytowy CNC</span>
+                        <h4 class="text-base font-bold text-white mt-0.5">Zablokowany stół usuwania urobku / brak odbioru detali (34.5% ogółu awarii)</h4>
+                        <p class="text-xs text-slate-200 mt-1 italic">Uwzględniony kontekst człowieka: "${noteText}"</p>
+                    </div>
+                    <span class="px-3 py-1.5 rounded-lg bg-graphite-850 border border-graphite-700 text-xs font-mono-numbers font-extrabold text-gold-300 flex-shrink-0">
+                        Skutek: -3 825 PLN
+                    </span>
+                </div>
+
+                <div class="space-y-3">
+                    <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="git-commit" class="w-4 h-4 text-gold-400"></i> Kaskada Przyczynowa 5-Why (Wygenerowana z telemetrii i notatki):
+                    </h4>
+                    
+                    <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+                        <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W1:</span>
+                        <div>
+                            <p class="text-slate-200 font-bold">Dlaczego laser płytowy został zatrzymany?</p>
+                            <p class="text-slate-300 mt-0.5">Nastąpiło zadziałanie czujnika przeciążenia napędu stołu odbiorczego palet.</p>
+                        </div>
+                    </div>
+
+                    <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+                        <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W2:</span>
+                        <div>
+                            <p class="text-slate-200 font-bold">Dlaczego stół uległ przeciążeniu mechanicznemu?</p>
+                            <p class="text-slate-300 mt-0.5">Ażur z blachy 8.0 mm zablokował się między rusztem a trawersą wygarniacza.</p>
+                        </div>
+                    </div>
+
+                    <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+                        <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W3:</span>
+                        <div>
+                            <p class="text-slate-200 font-bold">Dlaczego ażur uległ zakleszczeniu?</p>
+                            <p class="text-slate-300 mt-0.5">Wycięte wzmocnienia naroży kontenera opadły pod kątem z powodu braku mostków i falowania arkusza.</p>
+                        </div>
+                    </div>
+
+                    <div class="p-3.5 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex gap-3.5">
+                        <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W4:</span>
+                        <div>
+                            <p class="text-slate-200 font-bold">Dlaczego wyłączono mikromostki (micro-joints)?</p>
+                            <p class="text-slate-300 mt-0.5">Operator CAM chciał wyeliminować ręczne wybijanie detali młotkiem gumowym na rozładunku.</p>
+                        </div>
+                    </div>
+
+                    <div class="p-4 rounded-xl bg-graphite-900 border-2 border-gold-500/60 text-xs flex gap-3.5 bg-gold-500/10">
+                        <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-base">W5:</span>
+                        <div>
+                            <p class="text-gold-300 font-extrabold">Przyczyna Źródłowa (Root Cause):</p>
+                            <p class="text-slate-100 mt-0.5 leading-relaxed">Brak standardu technologicznego SOP określającego minimalną sztywność ażuru przy cięciu blach gr. &ge; 6 mm.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-5 rounded-2xl bg-graphite-900 border-2 border-emerald-500/50 space-y-2.5">
+                    <div class="flex items-center gap-2 text-emerald-400 text-xs font-extrabold uppercase">
+                        <i data-lucide="shield-check" class="w-5 h-5"></i> Zdefiniowane Zadanie Korygująco-Zapobiegawcze (CAPA):
+                    </div>
+                    <p class="text-xs text-slate-100 leading-relaxed font-medium">
+                        Wdrożenie obowiązkowych mikromostków 0.8 mm w oprogramowaniu CAM dla blach powyżej 6 mm oraz standaryzacja wózka buforowego na ażury przy stole rozładunku.
+                    </p>
+                    <div class="pt-2 flex justify-between items-center text-xs">
+                        <span class="text-slate-300">Odpowiedzialny: <strong class="text-white">Główny Technolog / UR</strong></span>
+                        <button onclick="alert('Zadanie CAPA zostało zarejestrowane w rejestrze UR z terminem wykonania do końca bieżącej zmiany.')" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-md">
+                            Zatwierdź Zadanie CAPA
+                        </button>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        const stationAudits = {
+            ws_weld: {
+                title: "Spawanie Manualne MIG/MAG (Stanowisko S-02)",
+                score: "3.92",
+                s1: "4.10", s2: "3.50", s3: "4.20", s4: "4.00", s5: "3.80",
+                observations: [
+                    { icon: "alert-triangle", text: "Nieodłożony uchwyt spawalniczy (wisi na konstrukcji palety zamiast na wieszaku)", pen: "-0.40 pkt (2S)" },
+                    { icon: "alert-circle", text: "Zalegające odpryski i zużyte końcówki prądowe w strefie odkładczej", pen: "-0.25 pkt (3S)" },
+                    { icon: "check-circle", text: "Etykiety partii drutu spawalniczego i atesty stali w pełni czytelne", pen: "+ Wzorcowo (4S)" }
+                ],
+                capa: "Wdrożyć magnetyczny wieszak pistoletu spawalniczego w strefie bezpośredniego zasięgu ręki spawacza (SMED/5S)."
+            },
+            ws_laser: {
+                title: "Laser BLM Płytowy CNC (Strefa Rozładunku L-01)",
+                score: "3.45",
+                s1: "2.90", s2: "3.60", s3: "3.80", s4: "3.70", s5: "3.25",
+                observations: [
+                    { icon: "alert-triangle", text: "Ażury po cięciu blachy 8mm wystają poza wyznaczoną żółtą linię pola odkładczego", pen: "-0.65 pkt (1S/2S)" },
+                    { icon: "alert-circle", text: "Brak oznaczenia pojemnika na drobne odpady technologiczne", pen: "-0.30 pkt (4S)" },
+                    { icon: "check-circle", text: "Stół wymienny i prowadnice czyste, brak zendry", pen: "+ Wzorcowo (3S)" }
+                ],
+                capa: "Zwiększenie gabarytu pojemnika samowyładowczego na złom i odmalowanie linii strefy bufora urobku."
+            },
+            ws_saw: {
+                title: "Piła Tarczowa do Metalu (Gniazdo P-01)",
+                score: "4.45",
+                s1: "4.60", s2: "4.30", s3: "4.80", s4: "4.40", s5: "4.15",
+                observations: [
+                    { icon: "check-circle", text: "Wzorcowy porządek na wiórach, czysta taca ociekowa chłodziwa", pen: "+ Wzorcowo (3S)" },
+                    { icon: "alert-circle", text: "Wyszczerbiona tarcza odłożona bez czerwonej zawieszki 'ZŁOM'", pen: "-0.20 pkt (1S)" }
+                ],
+                capa: "Uzupełnienie czerwonych zawieszek kwarantannowych dla narzędzi stępionych/uszkodzonych."
+            },
+            ws_bender: {
+                title: "Giętarka do Rur CNC (Strefa Matryc G-01)",
+                score: "4.68",
+                s1: "4.80", s2: "4.70", s3: "4.90", s4: "4.50", s5: "4.50",
+                observations: [
+                    { icon: "check-circle", text: "Tablica cieni matryc i trzpieni giętarskich kompletna w 100%", pen: "+ Wzorcowo (2S)" },
+                    { icon: "check-circle", text: "Brak wycieków hydrauliki, stanowisko po wdrożeniu TPM", pen: "+ Wzorcowo (3S)" }
+                ],
+                capa: "Stanowisko stanowi wzorzec (Benchmark fabryczny) dla audytów klientów zewnętrznych."
+            },
+            ws_final: {
+                title: "Stanowisko Montażu Końcowego (M-01)",
+                score: "4.25",
+                s1: "4.30", s2: "4.10", s3: "4.40", s4: "4.25", s5: "4.20",
+                observations: [
+                    { icon: "alert-circle", text: "Kartony z zamkami do kontenerów stoją na palecie zamiast na regale przepływowym", pen: "-0.30 pkt (2S)" },
+                    { icon: "check-circle", text: "Klucze dynamometryczne z aktualną kalibracją i na tablicy cieni", pen: "+ Wzorcowo (4S)" }
+                ],
+                capa: "Instalacja grawitacyjnego regału rolkowego FIFO dla okuć i zamków kontenerowych."
+            }
+        };
+
+        function loadStationAudit() {
+            const key = document.getElementById('audit-workstation-select').value;
+            const data = stationAudits[key] || stationAudits['ws_weld'];
+            const container = document.getElementById('station-audit-content');
+            const humanNote = document.getElementById('audit-human-notes').value;
+
+            container.innerHTML = `
+                <div class="lg:col-span-5 bg-graphite-900 p-6 rounded-2xl border border-graphite-750 space-y-5">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-xs uppercase text-slate-300 font-bold block">Ocena Końcowa 5S Stanowiska</span>
+                            <h3 class="text-base font-bold text-white mt-1">${data.title}</h3>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-3xl font-extrabold font-mono-numbers ${parseFloat(data.score) < 3.8 ? 'text-amber-400' : 'text-emerald-400'}">${data.score}</span>
+                            <span class="text-xs text-slate-300 block font-mono-numbers font-bold">/ 5.00 pkt</span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3 pt-3 border-t border-graphite-750">
+                        <div class="flex justify-between text-xs items-center">
+                            <span class="text-slate-300 font-semibold">1S - Seiri (Sortowanie)</span>
+                            <span class="font-mono-numbers font-bold text-white">${data.s1} / 5.00</span>
+                        </div>
+                        <div class="flex justify-between text-xs items-center">
+                            <span class="text-slate-300 font-semibold">2S - Seiton (Systematyka)</span>
+                            <span class="font-mono-numbers font-bold text-white">${data.s2} / 5.00</span>
+                        </div>
+                        <div class="flex justify-between text-xs items-center">
+                            <span class="text-slate-300 font-semibold">3S - Seiso (Sprzątanie)</span>
+                            <span class="font-mono-numbers font-bold text-white">${data.s3} / 5.00</span>
+                        </div>
+                        <div class="flex justify-between text-xs items-center">
+                            <span class="text-slate-300 font-semibold">4S - Seiketsu (Standaryzacja)</span>
+                            <span class="font-mono-numbers font-bold text-white">${data.s4} / 5.00</span>
+                        </div>
+                        <div class="flex justify-between text-xs items-center">
+                            <span class="text-slate-300 font-semibold">5S - Shitsuke (Samodyscyplina)</span>
+                            <span class="font-mono-numbers font-bold text-white">${data.s5} / 5.00</span>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-graphite-850 rounded-xl border border-graphite-750 text-xs">
+                        <span class="text-gold-400 font-extrabold block mb-1">Rekomendowane Działanie CAPA (AI):</span>
+                        <p class="text-slate-200 leading-relaxed">${data.capa}</p>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-7 bg-graphite-900 p-6 rounded-2xl border border-graphite-750 flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs font-bold text-white flex items-center gap-2">
+                                <i data-lucide="eye" class="w-4 h-4 text-gold-400"></i> Analiza Klatki Obrazu (Gemini Vision 2.5)
+                            </span>
+                            <span class="text-xs font-mono-numbers text-slate-300 bg-graphite-850 px-2.5 py-1 rounded-md border border-graphite-700">Skan z kamery przemysłowej</span>
+                        </div>
+
+                        <div class="w-full h-48 bg-graphite-950 rounded-xl border-2 border-graphite-700 relative overflow-hidden flex items-center justify-center p-4">
+                            <div class="absolute inset-0 bg-[radial-gradient(#384359_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
+                            
+                            <div class="border-2 border-amber-400 bg-amber-500/15 p-3 rounded-xl text-xs text-amber-200 max-w-sm z-10 shadow-xl text-center backdrop-blur-md">
+                                <i data-lucide="scan-line" class="w-6 h-6 mx-auto mb-1 text-amber-400"></i>
+                                <strong>Detekcja Niezgodności Vision:</strong><br>
+                                ${data.observations[0].text}
+                                <div class="text-[11px] text-slate-300 mt-1.5 italic font-medium">Uwzględniono: "${humanNote.slice(0, 42)}..."</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 space-y-2.5">
+                            ${data.observations.map(o => `
+                                <div class="p-3 rounded-xl bg-graphite-850 border border-graphite-750 text-xs flex justify-between items-center font-medium">
+                                    <span class="text-slate-200">${o.text}</span>
+                                    <span class="font-mono-numbers font-extrabold text-xs ${o.pen.includes('-') ? 'text-rose-400' : 'text-emerald-400'}">${o.pen}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="mt-5 pt-3.5 border-t border-graphite-750 flex justify-end">
+                        <button onclick="alert('Raport audytu 5S został wyeksportowany do formatu PDF i przesłany do brygadzisty.')" class="px-5 py-2.5 bg-graphite-800 hover:bg-graphite-750 text-xs font-bold text-slate-100 border border-graphite-600 rounded-xl transition flex items-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4 text-gold-400"></i> Eksportuj Raport Audytu (PDF)
+                        </button>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function triggerVisionAudit() {
+            const btn = document.getElementById('btn-run-vision');
+            const container = document.getElementById('station-audit-content');
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Skanowanie...`;
+            lucide.createIcons();
+
+            container.innerHTML = `
+                <div class="col-span-12 bg-graphite-900 p-14 rounded-2xl border border-graphite-750 text-center space-y-4">
+                    <div class="w-14 h-14 rounded-full border-4 border-gold-400 border-t-transparent animate-spin mx-auto"></div>
+                    <div class="space-y-1.5">
+                        <h4 class="text-base font-bold text-white">Segmentacja Obrazu i Weryfikacja Wytycznych Audytora...</h4>
+                        <p class="text-xs text-slate-300 font-mono-numbers font-bold">Gemini Vision 2.5: Przeliczanie kar cząstkowych 1S-5S (Skala 1.00 - 5.00)</p>
+                    </div>
+                </div>
+            `;
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="scan-line" class="w-4 h-4"></i> Wykonaj Audyt Obrazu AI`;
+                loadStationAudit();
+            }, 2200);
+        }
+
+        function updateWhatIf() {
+            const s1 = document.getElementById('slider-1').value;
+            const s2 = document.getElementById('slider-2').value;
+            const s3 = document.getElementById('slider-3').value;
+
+            document.getElementById('slider-1-val').innerText = `-${s1}%`;
+            document.getElementById('slider-2-val').innerText = `${s2} min`;
+            document.getElementById('slider-3-val').innerText = `${s3}%`;
+
+            const extraPallets = Math.round((s1 * 0.3) + (15 - s2) * 1.2 + (s3 - 60) * 0.2);
+            const extraSavings = Math.round(extraPallets * 275);
+
+            document.getElementById('whatif-impact-text').innerHTML = `
+                Zysk wydajności ciągu: <strong class="text-emerald-400 font-mono-numbers font-bold">+${extraPallets} palet / dobę</strong> | Oszczędność: <strong class="text-gold-400 font-mono-numbers font-bold">+${extraSavings} PLN / tydzień</strong>
+            `;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderMachines();
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>

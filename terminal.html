@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proton Lean OS - Terminal Operatorski MES</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        graphite: {
+                            950: '#141820',
+                            900: '#1c222d',
+                            850: '#252d3d',
+                            800: '#2e374a',
+                            750: '#384359',
+                            700: '#46536c',
+                        },
+                        gold: {
+                            400: '#fde047',
+                            500: '#eab308',
+                            600: '#ca8a04',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-mono-numbers { font-family: 'JetBrains Mono', monospace; }
+    </style>
+</head>
+<body class="bg-graphite-900 text-slate-100 min-h-screen flex flex-col p-4 sm:p-6 antialiased selection:bg-gold-500/20">
+
+    <!-- Top Bar Terminala -->
+    <header class="max-w-4xl w-full mx-auto bg-graphite-850 border-2 border-graphite-750 p-4 rounded-2xl flex items-center justify-between shadow-xl mb-6">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gold-500/20 border border-gold-400 flex items-center justify-center text-gold-400 font-bold">
+                <i data-lucide="tablet" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-extrabold text-white uppercase tracking-wider">Terminal Operatorski Shop-Floor</h1>
+                <p class="text-xs text-slate-300 font-mono-numbers">Szyna MES: <span class="text-emerald-400 font-bold">POŁĄCZONO</span> (proton_telemetry_bus)</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="text-xs font-mono-numbers bg-graphite-900 border border-graphite-700 px-3 py-1.5 rounded-lg text-gold-300 font-bold">
+                STANOWISKO: G-01
+            </span>
+        </div>
+    </header>
+
+    <!-- Główny Formularz Zgłoszenia Awarii / Meldunku -->
+    <main class="max-w-4xl w-full mx-auto bg-graphite-850 border-2 border-gold-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+        
+        <div>
+            <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-gold-400"></i> Rejestracja Zdarzenia / Przestoju Maszyny
+            </h2>
+            <p class="text-xs text-slate-300 mt-1">Meldunek zostanie wyemitowany do magistrali zakładowej i trafi na pulpit dyrektora.</p>
+        </div>
+
+        <!-- 1. Wybór Gniazda -->
+        <div class="space-y-2">
+            <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Wybierz Maszynę / Gniazdo Robocze:</label>
+            <select id="station-select" class="w-full bg-graphite-900 border-2 border-graphite-750 rounded-xl p-3.5 text-xs font-bold text-white focus:outline-none focus:border-gold-500">
+                <option value="0" selected>G-01 | Laser BLM Płytowy CNC (Wygarniacz/Stół)</option>
+                <option value="1">G-02 | Laser Rur i Profili BLM Tube (Podajnik wiązki)</option>
+                <option value="2">G-03 | Wycinarka Plazmowa HD (Cięcie blach grubych)</option>
+                <option value="3">G-04 | Giętarka do Rur CNC (Wymiana oprzyrządowania)</option>
+                <option value="4">G-05 | Piła Tarczowa do Metalu (Docinanie profili)</option>
+                <option value="8">G-09 | Wykończenie Przedgalwaniczne (Otworowanie pod cynk)</option>
+            </select>
+        </div>
+
+        <!-- 2. Wybór Usterki ze Słownika (Kody Lean / UR) -->
+        <div class="space-y-2">
+            <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Kod Usterki ze Słownika MES:</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button type="button" onclick="selectFault('BLM_JAM', 'Zablokowany stół usuwania urobku / brak odbioru', 51, 75, 'Logistyka Wewnętrzna')" class="fault-btn p-3.5 rounded-xl border-2 border-gold-500/60 bg-gold-500/10 text-left hover:border-gold-400 transition">
+                    <span class="text-[10px] font-mono-numbers font-bold text-gold-400 block">KOD: BLM_JAM</span>
+                    <span class="text-xs font-bold text-white block mt-0.5">Zablokowany stół urobku (Laser BLM)</span>
+                    <span class="text-[11px] text-slate-300 block font-mono-numbers">Norma strat: ~75 PLN/min</span>
+                </button>
+                <button type="button" onclick="selectFault('TUBE_FEED', 'Zacięcie podajnika wiązki profili ramowych', 36, 75, 'UR - Mechanika')" class="fault-btn p-3.5 rounded-xl border-2 border-graphite-750 bg-graphite-900 text-left hover:border-gold-400 transition">
+                    <span class="text-[10px] font-mono-numbers font-bold text-slate-400 block">KOD: TUBE_FEED</span>
+                    <span class="text-xs font-bold text-white block mt-0.5">Zacięcie podajnika wiązki (BLM Tube)</span>
+                    <span class="text-[11px] text-slate-300 block font-mono-numbers">Norma strat: ~75 PLN/min</span>
+                </button>
+                <button type="button" onclick="selectFault('GALW_HOLE', 'Odrzut partii: brak otworów technologicznych pod ocynk', 42, 50, 'Technologia / SOP')" class="fault-btn p-3.5 rounded-xl border-2 border-graphite-750 bg-graphite-900 text-left hover:border-gold-400 transition">
+                    <span class="text-[10px] font-mono-numbers font-bold text-slate-400 block">KOD: GALW_HOLE</span>
+                    <span class="text-xs font-bold text-white block mt-0.5">Brak otworów odpowietrzających (Przedgalw.)</span>
+                    <span class="text-[11px] text-slate-300 block font-mono-numbers">Norma strat: ~50 PLN/min</span>
+                </button>
+                <button type="button" onclick="selectFault('SAW_TOOTH', 'Wyszczerbienie zębów tarczy tnącej', 27, 40, 'UR - Oprzyrządowanie')" class="fault-btn p-3.5 rounded-xl border-2 border-graphite-750 bg-graphite-900 text-left hover:border-gold-400 transition">
+                    <span class="text-[10px] font-mono-numbers font-bold text-slate-400 block">KOD: SAW_TOOTH</span>
+                    <span class="text-xs font-bold text-white block mt-0.5">Wyszczerbienie tarczy (Piła)</span>
+                    <span class="text-[11px] text-slate-300 block font-mono-numbers">Norma strat: ~40 PLN/min</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 3. Czas Trwania i Notatka Operatora -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+                <label class="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2">Czas Przestoju (min):</label>
+                <input type="number" id="fault-duration" value="51" class="w-full bg-graphite-900 border-2 border-graphite-750 rounded-xl p-3 text-xs font-bold font-mono-numbers text-white focus:outline-none focus:border-gold-500">
+            </div>
+            <div class="sm:col-span-2">
+                <label class="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2">Notatka Operatora / Obserwacje:</label>
+                <input type="text" id="operator-note" value="Pisk prowadnicy osi Y przed zablokowaniem stołu na arkuszu 8mm." class="w-full bg-graphite-900 border-2 border-graphite-750 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-gold-500">
+            </div>
+        </div>
+
+        <!-- Przycisk Wysłania Meldunku -->
+        <div class="pt-4 border-t-2 border-graphite-750 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <span id="transmit-status" class="text-xs font-mono-numbers text-slate-400 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Gotowy do transmisji
+            </span>
+            <button onclick="dispatchTelemetryEvent()" id="btn-dispatch" class="px-8 py-4 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-sm rounded-xl transition shadow-xl flex items-center justify-center gap-2">
+                <i data-lucide="radio" class="w-5 h-5"></i> Nadaj Meldunek do Magistrali Zakładowej
+            </button>
+        </div>
+
+    </main>
+
+    <script>
+        lucide.createIcons();
+        const telemetryBus = new BroadcastChannel('proton_telemetry_bus');
+
+        let activeFault = {
+            code: 'BLM_JAM',
+            desc: 'Zablokowany stół usuwania urobku / brak odbioru',
+            duration: 51,
+            cost: 75,
+            dept: 'Logistyka Wewnętrzna'
+        };
+
+        function selectFault(code, desc, duration, cost, dept) {
+            activeFault = { code, desc, duration, cost, dept };
+            document.getElementById('fault-duration').value = duration;
+            
+            document.querySelectorAll('.fault-btn').forEach(b => {
+                b.className = "fault-btn p-3.5 rounded-xl border-2 border-graphite-750 bg-graphite-900 text-left hover:border-gold-400 transition";
+            });
+            event.currentTarget.className = "fault-btn p-3.5 rounded-xl border-2 border-gold-500/60 bg-gold-500/10 text-left hover:border-gold-400 transition";
+        }
+
+        function dispatchTelemetryEvent() {
+            const btn = document.getElementById('btn-dispatch');
+            const status = document.getElementById('transmit-status');
+            const stationId = parseInt(document.getElementById('station-select').value);
+            const duration = parseInt(document.getElementById('fault-duration').value);
+            const note = document.getElementById('operator-note').value;
+
+            // Przygotowanie pakietu JSON
+            const payload = {
+                timestamp: new Date().toISOString(),
+                eventId: 'EV-' + Math.floor(1000 + Math.random() * 9000),
+                machineId: stationId,
+                faultCode: activeFault.code,
+                faultDescription: activeFault.desc,
+                durationMin: duration,
+                costTotalPLN: duration * activeFault.cost,
+                operatorNote: note,
+                responsibleDept: activeFault.dept
+            };
+
+            // Animacja wysyłania po stronie terminala
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Nadawanie do bufora MES...`;
+            status.innerHTML = `<span class="w-2 h-2 rounded-full bg-gold-400 animate-ping"></span> Przesyłanie pakietu telemetrii...`;
+            lucide.createIcons();
+
+            // Emitujemy pakiet przez BroadcastChannel
+            telemetryBus.postMessage(payload);
+
+            // Zapisujemy kopię w localStorage jako trwały bufor
+            localStorage.setItem('proton_last_event', JSON.stringify(payload));
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="radio" class="w-5 h-5"></i> Nadaj Meldunek do Magistrali Zakładowej`;
+                status.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Wysłano pomyślnie (Pakiet: ${payload.eventId})`;
+                lucide.createIcons();
+            }, 600);
+        }
+    </script>
+</body>
+</html>
