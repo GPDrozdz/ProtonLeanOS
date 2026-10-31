@@ -15,12 +15,12 @@
                 extend: {
                     colors: {
                         graphite: {
-                            950: '#10141c',
-                            900: '#181f2a',
-                            850: '#222b3a',
-                            800: '#2c374a',
-                            750: '#38465e',
-                            700: '#485876',
+                            950: '#0e1218',
+                            900: '#151b24',
+                            850: '#1d2532',
+                            800: '#263142',
+                            750: '#324055',
+                            700: '#41526b',
                         },
                         gold: {
                             300: '#fef08a',
@@ -36,215 +36,222 @@
     <link rel="stylesheet" href="css/style.css">
     <style>
         .fault-glow {
-            box-shadow: 0 0 15px rgba(234, 179, 8, 0.15);
+            box-shadow: 0 0 12px rgba(234, 179, 8, 0.12);
         }
         .fault-active-glow {
-            box-shadow: 0 0 22px rgba(234, 179, 8, 0.45);
+            box-shadow: 0 0 20px rgba(234, 179, 8, 0.35);
         }
     </style>
 </head>
-<body class="bg-graphite-950 text-slate-100 min-h-screen flex flex-col p-4 sm:p-6 antialiased selection:bg-gold-500/20 text-base">
+<body class="bg-graphite-950 text-slate-100 min-h-screen flex flex-col p-3 sm:p-5 antialiased selection:bg-gold-500/20 text-sm">
 
-    <!-- Top Bar Terminala (Czytelny, przemysłowy nagłówek) -->
-    <header class="max-w-6xl w-full mx-auto bg-graphite-900 border-2 border-graphite-750 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between shadow-2xl mb-6 gap-4">
-        <div class="flex items-center gap-4">
-            <div class="w-14 h-14 rounded-2xl bg-gold-500/20 border-2 border-gold-400 flex items-center justify-center text-gold-400 font-bold shadow-lg shadow-gold-500/10">
-                <i data-lucide="tablet" class="w-7 h-7"></i>
+    <!-- Top Bar Terminala (Zwarty, przemysłowy nagłówek) -->
+    <header class="max-w-6xl w-full mx-auto bg-graphite-900 border-2 border-graphite-750 px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between shadow-2xl mb-3 gap-3">
+        <div class="flex items-center gap-3.5">
+            <div class="w-10 h-10 rounded-xl bg-gold-500/20 border-2 border-gold-400 flex items-center justify-center text-gold-400 font-bold shadow-md shadow-gold-500/10">
+                <i data-lucide="tablet" class="w-5 h-5"></i>
             </div>
             <div>
-                <h1 class="text-lg sm:text-xl font-extrabold text-white uppercase tracking-wider">Terminal Operatorski Shop-Floor</h1>
-                <p class="text-xs sm:text-sm text-slate-300 font-mono-numbers">Protokół MES: <span class="text-emerald-400 font-extrabold tracking-wide">ONLINE</span> (proton_telemetry_bus)</p>
+                <h1 class="text-base sm:text-lg font-extrabold text-white uppercase tracking-wider">Terminal Operatorski Shop-Floor</h1>
+                <p class="text-[11px] text-slate-300 font-mono-numbers">Szyna MES: <span class="text-emerald-400 font-bold">ONLINE</span> (proton_telemetry_bus)</p>
             </div>
         </div>
 
-        <!-- Główny Przełącznik Trybu: MANUAL / AUTO-MES -->
-        <div class="inline-flex p-1.5 bg-graphite-950 rounded-xl border-2 border-graphite-700 gap-2 w-full sm:w-auto">
-            <button onclick="setTerminalMode('manual')" id="mode-btn-manual" class="flex-1 sm:flex-initial px-6 py-3 rounded-lg text-xs sm:text-sm font-extrabold bg-gold-500 text-graphite-950 shadow-md transition flex items-center justify-center gap-2">
-                <i data-lucide="hand" class="w-5 h-5"></i> TRYB MANUAL-MES
+        <!-- Przełącznik Trybu: MANUAL / AUTO-MES -->
+        <div class="inline-flex p-1 bg-graphite-950 rounded-xl border border-graphite-750 gap-1.5 w-full sm:w-auto">
+            <button onclick="setTerminalMode('manual')" id="mode-btn-manual" class="flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-extrabold bg-gold-500 text-graphite-950 shadow-md transition flex items-center justify-center gap-2">
+                <i data-lucide="hand" class="w-4 h-4"></i> TRYB MANUAL-MES
             </button>
-            <button onclick="setTerminalMode('auto')" id="mode-btn-auto" class="flex-1 sm:flex-initial px-6 py-3 rounded-lg text-xs sm:text-sm font-extrabold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center justify-center gap-2">
-                <i data-lucide="cpu" class="w-5 h-5 text-cyan-400"></i> TRYB AUTO-MES (PLC)
+            <button onclick="setTerminalMode('auto')" id="mode-btn-auto" class="flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center justify-center gap-2">
+                <i data-lucide="cpu" class="w-4 h-4 text-cyan-400"></i> TRYB AUTO-MES (PLC)
             </button>
         </div>
     </header>
 
-    <!-- SEKCJA 1: TRYB MANUAL-MES (KASKADOWY PRZEPŁYW OPERATORA) -->
-    <main id="view-manual-mes" class="max-w-6xl w-full mx-auto space-y-6 flex-1">
+    <!-- SEKCJA 1: TRYB MANUAL-MES (KASKADOWY AKORDEON OPEN-CLOSE) -->
+    <main id="view-manual-mes" class="max-w-6xl w-full mx-auto space-y-2.5 flex-1">
 
-        <!-- KROK 1: WYBÓR OPERATORA -->
-        <section class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
-            <div class="flex items-center justify-between">
-                <label class="text-xs sm:text-sm font-extrabold text-gold-400 uppercase tracking-wider flex items-center gap-2.5">
-                    <span class="w-7 h-7 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-sm font-extrabold border border-gold-500/40">1</span>
-                    Zalogowany Operator Stanowiska:
-                </label>
-                <span id="active-operator-badge" class="text-xs sm:text-sm font-mono-numbers bg-graphite-950 border-2 border-graphite-700 px-3.5 py-1.5 rounded-xl text-gold-300 font-extrabold">
-                    Aktywny: Jan Kowalski
-                </span>
+        <!-- KROK 1: WYBÓR OPERATORA (AKORDEON) -->
+        <section class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl shadow-xl overflow-hidden transition-all">
+            <!-- Pasek Nagłówka / Podsumowania -->
+            <div class="px-4 py-2.5 bg-graphite-900 flex items-center justify-between border-b border-graphite-750/70">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-6 h-6 rounded-lg bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-xs font-extrabold border border-gold-500/40">1</span>
+                    <span class="text-xs font-extrabold text-gold-400 uppercase tracking-wider">Zalogowany Operator:</span>
+                    <span id="active-operator-badge" class="font-mono-numbers text-white font-extrabold text-xs ml-1">Jan Kowalski</span>
+                </div>
+                <button onclick="toggleStepAccordion('step-operator')" id="btn-toggle-operator" class="text-xs px-3 py-1 rounded-lg bg-graphite-850 hover:bg-graphite-800 text-slate-200 border border-graphite-700 font-bold transition flex items-center gap-1.5">
+                    <i data-lucide="edit-3" class="w-3.5 h-3.5 text-gold-400"></i> Zmień
+                </button>
             </div>
-            <div id="operators-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            
+            <!-- Rozwijana Zawartość: Kompaktowa Siatka Operatorów -->
+            <div id="step-operator-content" class="p-3 bg-graphite-950 transition-all duration-300">
+                <div id="operators-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                    <!-- Generowane dynamicznie przez terminal.js -->
+                </div>
+            </div>
+        </section>
+
+        <!-- KROK 2: WYBÓR MASZYNY / GNIAZDA (AKORDEON) -->
+        <section class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl shadow-xl overflow-hidden transition-all">
+            <!-- Pasek Nagłówka / Podsumowania -->
+            <div class="px-4 py-2.5 bg-graphite-900 flex items-center justify-between border-b border-graphite-750/70">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-6 h-6 rounded-lg bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-xs font-extrabold border border-gold-500/40">2</span>
+                    <span class="text-xs font-extrabold text-gold-400 uppercase tracking-wider">Gniazdo Robocze:</span>
+                    <span id="active-machine-badge" class="font-mono-numbers text-white font-extrabold text-xs ml-1">G-01 (Laser BLM Płytowy)</span>
+                </div>
+                <button onclick="toggleStepAccordion('step-machine')" id="btn-toggle-machine" class="text-xs px-3 py-1 rounded-lg bg-graphite-850 hover:bg-graphite-800 text-slate-200 border border-graphite-700 font-bold transition flex items-center gap-1.5">
+                    <i data-lucide="edit-3" class="w-3.5 h-3.5 text-gold-400"></i> Zmień
+                </button>
+            </div>
+
+            <!-- Rozwijana Zawartość: Zwarte Kafelki Maszyn -->
+            <div id="step-machine-content" class="p-3 bg-graphite-950 transition-all duration-300">
+                <div id="machines-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                    <!-- Generowane dynamicznie przez terminal.js -->
+                </div>
+            </div>
+        </section>
+
+        <!-- KROK 3: WYBÓR USTERKI (DEDYKOWANE FILTRY + INNE/NOWE) -->
+        <section id="step-fault-section" class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-4 shadow-xl space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-6 h-6 rounded-lg bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-xs font-extrabold border border-gold-500/40">3</span>
+                    <label class="text-xs font-extrabold text-gold-400 uppercase tracking-wider">Wybór Kodu Usterki:</label>
+                </div>
+                <span id="active-fault-badge" class="text-xs text-slate-400 font-mono-numbers font-medium">Kliknij kafelek awarii</span>
+            </div>
+            
+            <div id="faults-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                 <!-- Generowane dynamicznie przez terminal.js -->
             </div>
         </section>
 
-        <!-- KROK 2: WYBÓR MASZYNY / GNIAZDA -->
-        <section class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
-            <div class="flex items-center justify-between">
-                <label class="text-xs sm:text-sm font-extrabold text-gold-400 uppercase tracking-wider flex items-center gap-2.5">
-                    <span class="w-7 h-7 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-sm font-extrabold border border-gold-500/40">2</span>
-                    Wybór Gniazda Roboczego / Maszyny:
-                </label>
-                <span id="active-machine-badge" class="text-xs sm:text-sm font-mono-numbers bg-graphite-950 border-2 border-graphite-700 px-3.5 py-1.5 rounded-xl text-white font-extrabold">
-                    Wybrano: G-01 (Laser BLM Płytowy)
-                </span>
-            </div>
-            <div id="machines-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5">
-                <!-- Generowane dynamicznie przez terminal.js -->
-            </div>
-        </section>
-
-        <!-- KROK 3: WYBÓR USTERKI (DEDYKOWANE FILTRY PER MASZYNA + INNE/NOWE) -->
-        <section id="step-fault-section" class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
-            <div class="flex items-center justify-between">
-                <label class="text-xs sm:text-sm font-extrabold text-gold-400 uppercase tracking-wider flex items-center gap-2.5">
-                    <span class="w-7 h-7 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-sm font-extrabold border border-gold-500/40">3</span>
-                    Wybór Kodu Usterki / Rodzaju Awarii:
-                </label>
-                <span class="text-xs text-slate-400 font-mono-numbers">Lista dopasowana do wybranej maszyny</span>
-            </div>
-            <div id="faults-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-                <!-- Generowane dynamicznie przez terminal.js z podświetlonymi kodami błędów -->
-            </div>
-        </section>
-
-        <!-- KROK 4: REJESTRACJA CZASU I NOTATKA -->
-        <section id="step-time-section" class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-5 sm:p-6 shadow-xl space-y-5">
-            <label class="text-xs sm:text-sm font-extrabold text-gold-400 uppercase tracking-wider flex items-center gap-2.5">
-                <span class="w-7 h-7 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-sm font-extrabold border border-gold-500/40">4</span>
-                Czas Trwania Przestoju & Obserwacje:
-            </label>
-
-            <!-- Kafelki Czasu (Duże, dotykowe) -->
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
-                <button type="button" onclick="setTimeMode('live')" id="time-btn-live" class="p-4 rounded-xl border-2 border-gold-500 bg-gold-500/20 text-white font-extrabold text-xs sm:text-sm transition flex flex-col items-center justify-center gap-1.5 shadow-lg">
-                    <span class="flex items-center gap-2 text-gold-400 font-bold"><span class="w-3 h-3 rounded-full bg-gold-400 animate-ping"></span> NA ŻYWO</span>
-                    <span id="live-timer-display" class="font-mono-numbers text-xl font-extrabold">00:00</span>
-                </button>
-                <button type="button" onclick="setTimePreset(10)" id="time-btn-10" class="time-preset-btn p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs sm:text-sm hover:border-gold-400 transition flex items-center justify-center">
-                    10 minut
-                </button>
-                <button type="button" onclick="setTimePreset(20)" id="time-btn-20" class="time-preset-btn p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs sm:text-sm hover:border-gold-400 transition flex items-center justify-center">
-                    20 minut
-                </button>
-                <button type="button" onclick="setTimePreset(30)" id="time-btn-30" class="time-preset-btn p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs sm:text-sm hover:border-gold-400 transition flex items-center justify-center">
-                    30 minut
-                </button>
-                <div class="flex items-center bg-graphite-950 border-2 border-graphite-750 rounded-xl px-4 focus-within:border-gold-500">
-                    <span class="text-xs font-extrabold text-slate-400 mr-2 uppercase">Inny:</span>
-                    <input type="number" id="custom-duration-input" min="1" max="600" placeholder="min" oninput="setCustomTime()" class="w-full bg-transparent text-white font-mono-numbers font-extrabold text-sm py-4 focus:outline-none">
+        <!-- KROK 4: REJESTRACJA CZASU & DOLNY PAS TRANSMISJI (Zwarty panel) -->
+        <section id="step-time-section" class="bg-graphite-900 border-2 border-gold-500/50 rounded-2xl p-4 shadow-2xl space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-6 h-6 rounded-lg bg-gold-500/20 text-gold-400 flex items-center justify-center font-mono-numbers text-xs font-extrabold border border-gold-500/40">4</span>
+                    <label class="text-xs font-extrabold text-gold-400 uppercase tracking-wider">Rejestracja Czasu & Wysłanie:</label>
+                </div>
+                <div id="manual-status-indicator" class="text-xs font-mono-numbers text-slate-300 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Gotowość do nadania
                 </div>
             </div>
 
-            <!-- Pole Opisu / Obserwacji (Wymuszone przy Inne/Nowe) -->
-            <div>
-                <label id="note-label" class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">
-                    Krótki objaw / uwagi z hali:
-                </label>
-                <input type="text" id="manual-operator-note" oninput="checkDispatchReadiness()" placeholder="Wpisz objaw (np. pisk prowadnicy, zakleszczony ażur)..." class="w-full bg-graphite-950 border-2 border-graphite-750 rounded-xl p-4 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-gold-500 transition font-medium">
+            <!-- Kafelki Czasu (Wysokość zoptymalizowana: py-2.5) -->
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                <button type="button" onclick="setTimeMode('live')" id="time-btn-live" class="p-2.5 rounded-xl border-2 border-gold-500 bg-gold-500/20 text-white font-extrabold text-xs transition flex flex-col items-center justify-center gap-0.5 shadow-md">
+                    <span class="flex items-center gap-1.5 text-gold-400 text-[11px] font-bold"><span class="w-2 h-2 rounded-full bg-gold-400 animate-ping"></span> NA ŻYWO</span>
+                    <span id="live-timer-display" class="font-mono-numbers text-base font-extrabold">00:00</span>
+                </button>
+                <button type="button" onclick="setTimePreset(10)" id="time-btn-10" class="time-preset-btn p-2.5 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs hover:border-gold-400 transition flex items-center justify-center">
+                    10 minut
+                </button>
+                <button type="button" onclick="setTimePreset(20)" id="time-btn-20" class="time-preset-btn p-2.5 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs hover:border-gold-400 transition flex items-center justify-center">
+                    20 minut
+                </button>
+                <button type="button" onclick="setTimePreset(30)" id="time-btn-30" class="time-preset-btn p-2.5 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs hover:border-gold-400 transition flex items-center justify-center">
+                    30 minut
+                </button>
+                <div class="flex items-center bg-graphite-950 border-2 border-graphite-750 rounded-xl px-3 focus-within:border-gold-500">
+                    <span class="text-[11px] font-extrabold text-slate-400 mr-2 uppercase">Inny:</span>
+                    <input type="number" id="custom-duration-input" min="1" max="600" placeholder="min" oninput="setCustomTime()" class="w-full bg-transparent text-white font-mono-numbers font-extrabold text-xs py-2.5 focus:outline-none">
+                </div>
             </div>
-        </section>
 
-        <!-- KROK 5: WIELKIE PRZYCISKI AKCJI (POKA-YOKE CZASU) -->
-        <section class="bg-graphite-900 border-2 border-gold-500/50 rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-            <div id="manual-status-indicator" class="text-xs sm:text-sm font-mono-numbers text-slate-300 flex items-center gap-2.5">
-                <span class="w-3 h-3 rounded-full bg-emerald-400"></span> Gotowość do rejestracji meldunku
+            <!-- Pole Opisu / Wymuszonego Objawu dla Inne/Nowe -->
+            <div id="note-container">
+                <input type="text" id="manual-operator-note" oninput="checkDispatchReadiness()" placeholder="Wpisz krótki objaw z hali (np. pisk prowadnicy, zakleszczony ażur)..." class="w-full bg-graphite-950 border-2 border-graphite-750 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-gold-500 transition font-medium">
             </div>
 
-            <div class="flex flex-col sm:flex-row items-stretch gap-3">
-                <!-- Przycisk Start/Stop dla trybu Na Żywo (Poka-Yoke) -->
-                <button type="button" onclick="toggleLiveTimer()" id="btn-live-toggle" class="px-10 py-5 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-sm sm:text-base rounded-xl transition shadow-xl flex items-center justify-center gap-2.5">
-                    <i data-lucide="play" class="w-6 h-6"></i> START AWARII
+            <!-- Duże Przyciski Akcji (Poka-Yoke) -->
+            <div class="pt-1 flex flex-col sm:flex-row items-stretch gap-2.5">
+                <button type="button" onclick="toggleLiveTimer()" id="btn-live-toggle" class="flex-1 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs sm:text-sm rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    <i data-lucide="play" class="w-5 h-5"></i> START AWARII
                 </button>
 
-                <!-- Główny Przycisk Wysłania Meldunku (Ukryty w Na Żywo aż do kliknięcia STOP) -->
-                <button type="button" onclick="dispatchManualTelemetry()" id="btn-manual-dispatch" class="hidden px-10 py-5 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-sm sm:text-base rounded-xl transition shadow-xl flex items-center justify-center gap-2.5">
-                    <i data-lucide="send" class="w-6 h-6"></i> PRZEŚLIJ MELDUNEK DO MES
+                <button type="button" onclick="dispatchManualTelemetry()" id="btn-manual-dispatch" class="hidden flex-1 py-3.5 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs sm:text-sm rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    <i data-lucide="send" class="w-5 h-5"></i> PRZEŚLIJ MELDUNEK DO MES
                 </button>
             </div>
         </section>
     </main>
 
-    <!-- SEKCJA 2: TRYB AUTO-MES (STEROWNIKI PLC Z CIĄGŁYM ZEGARAM BEZA WARYJNYM) -->
-    <main id="view-auto-mes" class="hidden max-w-6xl w-full mx-auto space-y-6 flex-1">
-        <section class="bg-graphite-900 border-2 border-cyan-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-6">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-graphite-750">
+    <!-- SEKCJA 2: TRYB AUTO-MES (PLC) -->
+    <main id="view-auto-mes" class="hidden max-w-6xl w-full mx-auto space-y-4 flex-1">
+        <section class="bg-graphite-900 border-2 border-cyan-500/40 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-graphite-750">
                 <div>
-                    <h2 class="text-lg sm:text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2.5">
-                        <i data-lucide="cpu" class="w-6 h-6 text-cyan-400"></i> Magistrala Komunikacyjna Maszyn CNC (PLC Tagged I/O)
+                    <h2 class="text-base sm:text-lg font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="cpu" class="w-5 h-5 text-cyan-400"></i> Magistrala Komunikacyjna Maszyn CNC (PLC Tagged I/O)
                     </h2>
-                    <p class="text-xs sm:text-sm text-slate-300 mt-1">Bezpośrednie próbkowanie sygnałów ze sterowników laserów BLM.</p>
+                    <p class="text-xs text-slate-300 mt-0.5">Bezpośrednie próbkowanie sygnałów ze sterowników laserów BLM.</p>
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="text-right">
-                        <span class="text-[11px] text-slate-400 uppercase font-mono-numbers block">Globalny Uptime PLC</span>
-                        <span id="plc-uptime-display" class="text-base sm:text-lg font-extrabold font-mono-numbers text-emerald-400">00:00:00</span>
+                        <span class="text-[10px] text-slate-400 uppercase font-mono-numbers block">Globalny Uptime PLC</span>
+                        <span id="plc-uptime-display" class="text-base font-extrabold font-mono-numbers text-emerald-400">00:00:00</span>
                     </div>
-                    <span class="text-xs font-mono-numbers bg-cyan-500/10 border-2 border-cyan-500/40 text-cyan-300 px-3.5 py-2 rounded-xl font-extrabold self-start sm:self-auto">
+                    <span class="text-xs font-mono-numbers bg-cyan-500/10 border-2 border-cyan-500/40 text-cyan-300 px-3 py-1.5 rounded-xl font-extrabold self-start sm:self-auto">
                         SIEMENS / BECKHOFF ACTIVE
                     </span>
                 </div>
             </div>
 
-            <!-- Wybór Lasera CNC podpiętego pod AUTO-MES -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button type="button" onclick="selectAutoMachine(0)" id="auto-mach-0" class="auto-mach-btn p-5 sm:p-6 rounded-2xl border-2 border-cyan-500 bg-cyan-500/10 text-left transition shadow-lg">
+            <!-- Wybór Lasera CNC -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button type="button" onclick="selectAutoMachine(0)" id="auto-mach-0" class="auto-mach-btn p-4 rounded-xl border-2 border-cyan-500 bg-cyan-500/10 text-left transition shadow-md">
                     <div class="flex justify-between items-start">
-                        <span class="text-xs sm:text-sm font-mono-numbers font-extrabold text-cyan-400">GNIAZDO G-01</span>
-                        <span class="text-xs font-mono-numbers bg-cyan-950 border border-cyan-700 px-2.5 py-1 rounded text-cyan-300 font-bold">PLC DB10.DBX4.0</span>
+                        <span class="text-xs font-mono-numbers font-extrabold text-cyan-400">GNIAZDO G-01</span>
+                        <span class="text-[11px] font-mono-numbers bg-cyan-950 border border-cyan-700 px-2 py-0.5 rounded text-cyan-300 font-bold">PLC DB10.DBX4.0</span>
                     </div>
-                    <h3 class="text-base sm:text-lg font-extrabold text-white mt-2">Laser BLM Płytowy CNC</h3>
-                    <p class="text-xs sm:text-sm text-slate-300 mt-1">Stół paletowy & wygarniacz urobku arkuszy</p>
+                    <h3 class="text-sm font-extrabold text-white mt-1.5">Laser BLM Płytowy CNC</h3>
+                    <p class="text-xs text-slate-300">Stół paletowy & wygarniacz urobku arkuszy</p>
                 </button>
 
-                <button type="button" onclick="selectAutoMachine(1)" id="auto-mach-1" class="auto-mach-btn p-5 sm:p-6 rounded-2xl border-2 border-graphite-750 bg-graphite-950 text-left transition hover:border-cyan-400">
+                <button type="button" onclick="selectAutoMachine(1)" id="auto-mach-1" class="auto-mach-btn p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-left transition hover:border-cyan-400">
                     <div class="flex justify-between items-start">
-                        <span class="text-xs sm:text-sm font-mono-numbers font-extrabold text-slate-400">GNIAZDO G-02</span>
-                        <span class="text-xs font-mono-numbers bg-graphite-850 border border-graphite-700 px-2.5 py-1 rounded text-slate-300 font-bold">PLC DB12.DBX2.1</span>
+                        <span class="text-xs font-mono-numbers font-extrabold text-slate-400">GNIAZDO G-02</span>
+                        <span class="text-[11px] font-mono-numbers bg-graphite-850 border border-graphite-700 px-2 py-0.5 rounded text-slate-300 font-bold">PLC DB12.DBX2.1</span>
                     </div>
-                    <h3 class="text-base sm:text-lg font-extrabold text-white mt-2">Laser Rur i Profili BLM Tube</h3>
-                    <p class="text-xs sm:text-sm text-slate-300 mt-1">Automatyczny magazyn wiązek i suporty</p>
+                    <h3 class="text-sm font-extrabold text-white mt-1.5">Laser Rur i Profili BLM Tube</h3>
+                    <p class="text-xs text-slate-300">Automatyczny magazyn wiązek i suporty</p>
                 </button>
             </div>
 
             <!-- Panel Stanu Maszyny / Alarmu PLC -->
-            <div id="plc-status-card" class="bg-graphite-950 border-2 border-emerald-500/50 p-6 sm:p-7 rounded-2xl space-y-5">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div class="flex items-center gap-3.5">
-                        <div id="plc-status-icon" class="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400">
-                            <i data-lucide="check-circle-2" class="w-7 h-7"></i>
+            <div id="plc-status-card" class="bg-graphite-950 border-2 border-emerald-500/50 p-5 rounded-2xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div id="plc-status-icon" class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400">
+                            <i data-lucide="check-circle-2" class="w-6 h-6"></i>
                         </div>
                         <div>
-                            <span id="plc-cycle-text" class="text-xs sm:text-sm font-mono-numbers font-bold text-emerald-400 uppercase tracking-wider block">STAN STEROWNIKA: PRACA AUTOMATYCZNA (CYCLE_RUN = TRUE)</span>
-                            <h4 id="plc-active-title" class="text-base sm:text-lg font-bold text-white mt-0.5">Brak aktywnych kodów błędu w rejestrze PLC</h4>
+                            <span id="plc-cycle-text" class="text-xs font-mono-numbers font-bold text-emerald-400 uppercase tracking-wider block">STAN STEROWNIKA: PRACA AUTOMATYCZNA (CYCLE_RUN = TRUE)</span>
+                            <h4 id="plc-active-title" class="text-sm font-bold text-white mt-0.5">Brak aktywnych kodów błędu w rejestrze PLC</h4>
                         </div>
                     </div>
                     <div class="text-right">
-                        <span id="plc-timer-label" class="text-xs text-slate-400 font-mono-numbers block uppercase font-bold">Czas ciągłego cyklu</span>
-                        <span id="plc-state-timer" class="text-2xl sm:text-3xl font-extrabold font-mono-numbers text-white">00:00</span>
+                        <span id="plc-timer-label" class="text-[11px] text-slate-400 font-mono-numbers block uppercase font-bold">Czas ciągłego cyklu</span>
+                        <span id="plc-state-timer" class="text-xl font-extrabold font-mono-numbers text-white">00:00</span>
                     </div>
                 </div>
 
-                <div id="plc-error-details" class="hidden p-5 rounded-xl bg-rose-500/10 border-2 border-rose-500 text-xs sm:text-sm space-y-1.5 shadow-lg">
+                <div id="plc-error-details" class="hidden p-4 rounded-xl bg-rose-500/10 border-2 border-rose-500 text-xs space-y-1 shadow-md">
                     <span id="plc-error-code" class="font-mono-numbers font-extrabold text-rose-400 uppercase block tracking-wider">KOD BŁĘDU: ---</span>
                     <p id="plc-error-desc" class="text-slate-200 font-semibold leading-relaxed">---</p>
                 </div>
 
-                <div class="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                    <button type="button" onclick="triggerPlcStop()" id="btn-plc-toggle" class="px-8 py-4 bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs sm:text-sm rounded-xl transition shadow-xl flex items-center justify-center gap-2.5">
-                        <i data-lucide="octagon-alert" class="w-5 h-5"></i> ZATRZYMAJ MASZYNĘ (SYGNAŁ PLC)
+                <div class="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <button type="button" onclick="triggerPlcStop()" id="btn-plc-toggle" class="px-6 py-3 bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                        <i data-lucide="octagon-alert" class="w-4 h-4"></i> ZATRZYMAJ MASZYNĘ (SYGNAŁ PLC)
                     </button>
-                    <button type="button" onclick="dispatchPlcTelemetry()" id="btn-plc-dispatch" class="hidden px-10 py-4 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs sm:text-sm rounded-xl transition shadow-xl flex items-center justify-center gap-2.5">
-                        <i data-lucide="send" class="w-5 h-5"></i> TRANSMITUJ ALARM PLC DO SZYNY MES
+                    <button type="button" onclick="dispatchPlcTelemetry()" id="btn-plc-dispatch" class="hidden px-8 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                        <i data-lucide="send" class="w-4 h-4"></i> TRANSMITUJ ALARM PLC DO SZYNY MES
                     </button>
                 </div>
             </div>

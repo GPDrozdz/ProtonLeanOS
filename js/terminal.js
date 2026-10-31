@@ -1,6 +1,6 @@
 /**
- * Proton Lean OS - Terminal Operatorski MES (Shop-Floor Logic v2.5)
- * Poka-Yoke czasu, dedykowane słowniki awarii per gniazdo robocze oraz niezależny Uptime PLC.
+ * Proton Lean OS - Terminal Operatorski MES (Shop-Floor Logic v2.6)
+ * Kaskadowy akordeon Open-Close, dedykowane słowniki per gniazdo i Poka-Yoke czasu.
  */
 
 // Baza operatorów hali
@@ -57,7 +57,7 @@ const STATION_FAULTS = {
         { code: "BEND_TOOL", name: "Wyszczerbienie matrycy gnącej promienia", dept: "UR - Oprzyrządowanie", costMin: 55 },
         { code: "HYDR_TEMP", name: "Przegrzanie oleju hydraulicznego agregatu", dept: "UR - Hydraulika", costMin: 55 },
         { code: "BACK_GAUGE", name: "Błąd pozycjonera zderzaków tylnych osi X", dept: "UR - Mechatronika", costMin: 55 },
-        { code: "ANGLE_DEV", name: "Odchyłka kąta gięcia profilu powyżej &plusmn;1.5&deg;", dept: "Jakość / SOP", costMin: 45 }
+        { code: "ANGLE_DEV", name: "Odchyłka kąta gięcia profilu powyżej ±1.5°", dept: "Jakość / SOP", costMin: 45 }
     ],
     4: [ // G-05: Piła Tarczowa
         { code: "BLADE_TEETH", name: "Wyłamanie zębów węglikowych tarczy", dept: "UR - Narzędziownia", costMin: 50 },
@@ -74,17 +74,17 @@ const STATION_FAULTS = {
     6: [ // G-07: Robot Spawalniczy A
         { code: "ROBOT_COLL", name: "Zadziałanie złącza antykolizyjnego palnika", dept: "UR - Robotyka", costMin: 70 },
         { code: "WIRE_FEED", name: "Zablokowanie drutu w pancerzu podajnika", dept: "Spawalnictwo / UR", costMin: 65 },
-        { code: "GAS_NOZZLE", name: "Zalepienie dyszy gazowej odpryskami (Brak czyszczenia)", dept: "Stacja TPM Robota", costMin: 50 },
-        { code: "POSITIONER_SYN", name: "Błąd synchronizacji osi obrotnika dwustanowiskowego", dept: "UR - Mechatronika", costMin: 70 }
+        { code: "GAS_NOZZLE", name: "Zalepienie dyszy gazowej odpryskami", dept: "Stacja TPM Robota", costMin: 50 },
+        { code: "POSITIONER_SYN", name: "Błąd synchronizacji osi obrotnika", dept: "UR - Mechatronika", costMin: 70 }
     ],
     7: [ // G-08: Spawanie MIG Manual
-        { code: "TORCH_FAIL", name: "Przepalenie wkładu prądowego / rękojeści uchwytu", dept: "Gospodarka Narzędziowa", costMin: 45 },
+        { code: "TORCH_FAIL", name: "Przepalenie wkładu prądowego / rękojeści", dept: "Gospodarka Narzędziowa", costMin: 45 },
         { code: "GAS_LEAK", name: "Rozszczelnienie reduktora mieszanki Ar/CO2", dept: "Media Gazowe", costMin: 40 },
         { code: "EARTH_CLAMP", name: "Upalenie zacisku masy stanowiskowej", dept: "UR - Elektryka", costMin: 35 },
-        { code: "POROSITY_REJ", name: "Porowatość spoiny: wilgoć lub przeciąg na hali", dept: "Jakość / Spawalnictwo", costMin: 50 }
+        { code: "POROSITY_REJ", name: "Porowatość spoiny: wilgoć lub przeciąg", dept: "Jakość / Spawalnictwo", costMin: 50 }
     ],
     8: [ // G-09: Przedgalwanika
-        { code: "HOLE_MISSING", name: "Wykryto brak otworów technologicznych odpowietrzeń", dept: "Kontrola Jakości FTY", costMin: 55 },
+        { code: "HOLE_MISSING", name: "Wykryto brak otworów odpowietrzeń technologicznych", dept: "Kontrola Jakości FTY", costMin: 55 },
         { code: "SLAG_UNGROUND", name: "Pozostawiony żużel i ostre krawędzie spoin", dept: "Obróbka Ślusarska", costMin: 45 },
         { code: "TRAVERSE_CRANE", name: "Awaria wciągnika trawersy załadunkowej", dept: "UR - Dźwignice", costMin: 60 },
         { code: "HOOK_BENT", name: "Zdeformowane zawiesia technologiczne do cynku", dept: "UR - Oprzyrządowanie", costMin: 40 }
@@ -125,32 +125,78 @@ let selectedFault = null;
 let durationType = "live";
 let durationMinutes = 0;
 
-// Zmienne stopera czasu rzeczywistego (Manual)
+// Stany akordeonu Open-Close
+let isOperatorOpen = false; // Startujemy ze zwiniętym operatorem, żeby od razu widzieć maszynę i usterki
+let isMachineOpen = false;
+
+// Zmienne stopera
 let liveTimerInterval = null;
 let liveSeconds = 0;
 let isLiveRunning = false;
-let isLiveFinishedAndReady = false; // Flaga Poka-Yoke: stoper zatrzymany, czas > 0, czeka na wysyłkę
+let isLiveFinishedAndReady = false;
 
-// Stan modułu AUTO-MES (PLC)
+// Stan AUTO-MES
 let autoMachineId = 0;
 let isPlcAlarm = false;
-let globalPlcUptimeSeconds = 14280; // Start z realistyczną historią ciągłej pracy (3h 58m)
+let globalPlcUptimeSeconds = 14280;
 let globalPlcUptimeInterval = null;
 let plcAlarmSeconds = 0;
 let plcAlarmInterval = null;
 let activePlcError = null;
 
-// 1. Inicjalizacja komponentu
+// 1. Inicjalizacja
 function initTerminal() {
     renderOperators();
     renderMachines();
     renderFaultsForMachine(selectedMachine.id);
+    updateAccordionUI();
     updatePokaYokeActionButtons();
     startGlobalPlcUptimeCounter();
     if (window.lucide) lucide.createIcons();
 }
 
-// 2. Przełącznik trybu MANUAL-MES / AUTO-MES
+// 2. Zarządzanie Akordeonem Open-Close
+function toggleStepAccordion(stepId) {
+    if (stepId === 'step-operator') {
+        isOperatorOpen = !isOperatorOpen;
+        if (isOperatorOpen) isMachineOpen = false;
+    } else if (stepId === 'step-machine') {
+        isMachineOpen = !isMachineOpen;
+        if (isMachineOpen) isOperatorOpen = false;
+    }
+    updateAccordionUI();
+}
+
+function updateAccordionUI() {
+    const opContent = document.getElementById('step-operator-content');
+    const machContent = document.getElementById('step-machine-content');
+    const btnOp = document.getElementById('btn-toggle-operator');
+    const btnMach = document.getElementById('btn-toggle-machine');
+
+    if (opContent) {
+        if (isOperatorOpen) {
+            opContent.classList.remove('hidden');
+            if (btnOp) btnOp.innerHTML = `<i data-lucide="chevron-up" class="w-3.5 h-3.5 text-gold-400"></i> Zwiń`;
+        } else {
+            opContent.classList.add('hidden');
+            if (btnOp) btnOp.innerHTML = `<i data-lucide="edit-3" class="w-3.5 h-3.5 text-gold-400"></i> Zmień`;
+        }
+    }
+
+    if (machContent) {
+        if (isMachineOpen) {
+            machContent.classList.remove('hidden');
+            if (btnMach) btnMach.innerHTML = `<i data-lucide="chevron-up" class="w-3.5 h-3.5 text-gold-400"></i> Zwiń`;
+        } else {
+            machContent.classList.add('hidden');
+            if (btnMach) btnMach.innerHTML = `<i data-lucide="edit-3" class="w-3.5 h-3.5 text-gold-400"></i> Zmień`;
+        }
+    }
+
+    if (window.lucide) lucide.createIcons();
+}
+
+// 3. Przełącznik trybu MANUAL-MES / AUTO-MES
 function setTerminalMode(mode) {
     currentMode = mode;
     const manualView = document.getElementById("view-manual-mes");
@@ -161,17 +207,17 @@ function setTerminalMode(mode) {
     if (mode === "manual") {
         manualView.classList.remove("hidden");
         autoView.classList.add("hidden");
-        btnManual.className = "flex-1 sm:flex-initial px-6 py-3 rounded-lg text-xs sm:text-sm font-extrabold bg-gold-500 text-graphite-950 shadow-md transition flex items-center justify-center gap-2";
-        btnAuto.className = "flex-1 sm:flex-initial px-6 py-3 rounded-lg text-xs sm:text-sm font-extrabold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center justify-center gap-2";
+        btnManual.className = "flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-extrabold bg-gold-500 text-graphite-950 shadow-md transition flex items-center justify-center gap-2";
+        btnAuto.className = "flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center justify-center gap-2";
     } else {
         manualView.classList.add("hidden");
         autoView.classList.remove("hidden");
-        btnAuto.className = "flex-1 sm:flex-initial px-6 py-3 rounded-lg text-xs sm:text-sm font-extrabold bg-cyan-500 text-graphite-950 shadow-md transition flex items-center justify-center gap-2";
-        btnManual.className = "flex-1 sm:flex-initial px-6 py-3 rounded-lg text-xs sm:text-sm font-extrabold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center justify-center gap-2";
+        btnAuto.className = "flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-extrabold bg-cyan-500 text-graphite-950 shadow-md transition flex items-center justify-center gap-2";
+        btnManual.className = "flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center justify-center gap-2";
     }
 }
 
-// 3. Renderowanie i wybór Operatora (Krok 1)
+// 4. Krok 1: Wybór Operatora
 function renderOperators() {
     const container = document.getElementById("operators-grid");
     if (!container) return;
@@ -181,14 +227,14 @@ function renderOperators() {
         const btn = document.createElement("button");
         btn.type = "button";
         const isActive = selectedOperator && selectedOperator.id === op.id;
-        btn.className = `p-3.5 sm:p-4 rounded-xl border-2 text-left transition font-bold text-xs sm:text-sm flex items-center gap-3 ${
+        btn.className = `p-2.5 rounded-xl border text-left transition font-bold text-xs flex items-center gap-2.5 ${
             isActive 
-                ? "border-gold-500 bg-gold-500/25 text-white shadow-xl shadow-gold-500/10" 
-                : "border-graphite-750 bg-graphite-950 text-slate-300 hover:border-graphite-600 hover:text-white"
+                ? "border-gold-500 bg-gold-500/25 text-white shadow-md shadow-gold-500/10" 
+                : "border-graphite-750 bg-graphite-900 text-slate-300 hover:border-graphite-600 hover:text-white"
         }`;
         btn.onclick = () => selectOperator(op);
         btn.innerHTML = `
-            <div class="w-8 h-8 rounded-lg ${isActive ? 'bg-gold-500 text-graphite-950 font-extrabold' : 'bg-graphite-850 text-slate-400 font-bold'} flex items-center justify-center text-xs font-mono-numbers">
+            <div class="w-6 h-6 rounded-md ${isActive ? 'bg-gold-500 text-graphite-950 font-extrabold' : 'bg-graphite-800 text-slate-400 font-bold'} flex items-center justify-center text-[10px] font-mono-numbers">
                 ${op.name.split(' ').map(n => n[0]).join('')}
             </div>
             <span class="truncate">${op.name}</span>
@@ -198,16 +244,20 @@ function renderOperators() {
 
     const badge = document.getElementById("active-operator-badge");
     if (badge && selectedOperator) {
-        badge.innerText = `Aktywny: ${selectedOperator.name}`;
+        badge.innerText = selectedOperator.name;
     }
 }
 
 function selectOperator(op) {
     selectedOperator = op;
     renderOperators();
+    // Płynne zwinięcie operatora i rozwinięcie maszyn (Open-Close)
+    isOperatorOpen = false;
+    isMachineOpen = true;
+    updateAccordionUI();
 }
 
-// 4. Renderowanie i wybór Maszyny (Krok 2 - z filtrowaniem usterek)
+// 5. Krok 2: Wybór Maszyny
 function renderMachines() {
     const container = document.getElementById("machines-grid");
     if (!container) return;
@@ -217,38 +267,44 @@ function renderMachines() {
         const btn = document.createElement("button");
         btn.type = "button";
         const isActive = selectedMachine && selectedMachine.id === m.id;
-        btn.className = `p-4 sm:p-4.5 rounded-xl border-2 text-left transition ${
+        btn.className = `p-2.5 rounded-xl border text-left transition ${
             isActive 
-                ? "border-gold-500 bg-gold-500/20 shadow-xl shadow-gold-500/10" 
-                : "border-graphite-750 bg-graphite-950 hover:border-graphite-600"
+                ? "border-gold-500 bg-gold-500/20 shadow-md shadow-gold-500/10" 
+                : "border-graphite-750 bg-graphite-900 hover:border-graphite-600"
         }`;
         btn.onclick = () => selectMachine(m);
         btn.innerHTML = `
             <div class="flex justify-between items-center">
-                <span class="text-xs sm:text-sm font-mono-numbers font-extrabold ${isActive ? 'text-gold-400' : 'text-slate-400'}">${m.code}</span>
-                <span class="w-2.5 h-2.5 rounded-full ${isActive ? 'bg-gold-400 shadow-sm shadow-gold-400' : 'bg-slate-700'}"></span>
+                <span class="text-xs font-mono-numbers font-extrabold ${isActive ? 'text-gold-400' : 'text-slate-400'}">${m.code}</span>
+                <span class="w-2 h-2 rounded-full ${isActive ? 'bg-gold-400' : 'bg-slate-700'}"></span>
             </div>
-            <h4 class="text-xs sm:text-sm font-extrabold text-white mt-1.5 truncate">${m.name}</h4>
+            <h4 class="text-xs font-bold text-white mt-1 truncate">${m.name}</h4>
         `;
         container.appendChild(btn);
     });
 
     const badge = document.getElementById("active-machine-badge");
     if (badge && selectedMachine) {
-        badge.innerText = `Wybrano: ${selectedMachine.code} (${selectedMachine.name})`;
+        badge.innerText = `${selectedMachine.code} (${selectedMachine.name})`;
     }
 }
 
 function selectMachine(m) {
     selectedMachine = m;
     renderMachines();
-    // Dynamiczne przefiltrowanie słownika usterek pod wybraną maszynę
     renderFaultsForMachine(m.id);
     selectedFault = null;
+    
+    // Zwinięcie maszyny i skupienie na usterkach
+    isMachineOpen = false;
+    updateAccordionUI();
+
+    const faultBadge = document.getElementById("active-fault-badge");
+    if (faultBadge) faultBadge.innerText = "Wybierz usterkę dla " + m.code;
     checkDispatchReadiness();
 }
 
-// 5. Renderowanie Usterek per Maszyna + Kafelek INNE/NOWE (Krok 3)
+// 6. Krok 3: Wybór Usterki per Maszyna + INNE/NOWE
 function renderFaultsForMachine(machineId) {
     const container = document.getElementById("faults-grid");
     if (!container) return;
@@ -256,12 +312,12 @@ function renderFaultsForMachine(machineId) {
 
     const faults = STATION_FAULTS[machineId] || STATION_FAULTS[0];
 
-    // 4 Usterki technologiczne
+    // 4 usterki technologiczne
     faults.forEach(f => {
         const btn = document.createElement("button");
         btn.type = "button";
         const isActive = selectedFault && selectedFault.code === f.code;
-        btn.className = `p-4 sm:p-4.5 rounded-xl border-2 text-left transition flex flex-col justify-between ${
+        btn.className = `p-3 rounded-xl border-2 text-left transition flex flex-col justify-between ${
             isActive 
                 ? "border-gold-400 bg-gold-500/25 fault-active-glow" 
                 : "border-graphite-750 bg-graphite-950 hover:border-gold-500/60 fault-glow"
@@ -269,17 +325,17 @@ function renderFaultsForMachine(machineId) {
         btn.onclick = () => selectFault(f);
         btn.innerHTML = `
             <div class="flex justify-between items-start gap-2">
-                <span class="text-xs font-mono-numbers font-extrabold px-2.5 py-1 rounded-md ${isActive ? 'bg-gold-500 text-graphite-950' : 'bg-gold-500/15 text-gold-400 border border-gold-400/40'} tracking-wider">
+                <span class="text-[11px] font-mono-numbers font-extrabold px-2 py-0.5 rounded ${isActive ? 'bg-gold-500 text-graphite-950' : 'bg-gold-500/15 text-gold-400 border border-gold-400/40'} tracking-wider">
                     ${f.code}
                 </span>
-                <span class="text-[11px] text-slate-400 font-semibold truncate">${f.dept}</span>
+                <span class="text-[10px] text-slate-400 font-semibold truncate">${f.dept}</span>
             </div>
-            <p class="text-xs sm:text-sm font-extrabold text-white mt-2.5 leading-snug">${f.name}</p>
+            <p class="text-xs font-bold text-white mt-2 leading-snug">${f.name}</p>
         `;
         container.appendChild(btn);
     });
 
-    // 5. Stały Kafelek: INNE / NOWA USTERKA
+    // 5. Kafelek INNE / NOWE
     const otherFault = {
         code: "FAULT_OTHER",
         name: "Inna / Nieskatalogowana usterka (Wpisz objaw poniżej)",
@@ -290,7 +346,7 @@ function renderFaultsForMachine(machineId) {
     const otherBtn = document.createElement("button");
     otherBtn.type = "button";
     const isOtherActive = selectedFault && selectedFault.code === "FAULT_OTHER";
-    otherBtn.className = `p-4 sm:p-4.5 rounded-xl border-2 text-left transition flex flex-col justify-between ${
+    otherBtn.className = `p-3 rounded-xl border-2 text-left transition flex flex-col justify-between ${
         isOtherActive 
             ? "border-amber-400 bg-amber-500/25 fault-active-glow" 
             : "border-amber-500/50 bg-graphite-950 hover:border-amber-400"
@@ -298,12 +354,12 @@ function renderFaultsForMachine(machineId) {
     otherBtn.onclick = () => selectFault(otherFault);
     otherBtn.innerHTML = `
         <div class="flex justify-between items-start gap-2">
-            <span class="text-xs font-mono-numbers font-extrabold px-2.5 py-1 rounded-md ${isOtherActive ? 'bg-amber-400 text-graphite-950' : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'} tracking-wider">
+            <span class="text-[11px] font-mono-numbers font-extrabold px-2 py-0.5 rounded ${isOtherActive ? 'bg-amber-400 text-graphite-950' : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'} tracking-wider">
                 INNE / NOWE
             </span>
-            <span class="text-[11px] text-amber-400 font-bold">Wymaga opisu</span>
+            <span class="text-[10px] text-amber-400 font-bold">Wymaga opisu</span>
         </div>
-        <p class="text-xs sm:text-sm font-extrabold text-amber-200 mt-2.5 leading-snug">Zgłoś nieskatalogowaną przyczynę &rarr;</p>
+        <p class="text-xs font-bold text-amber-200 mt-2 leading-snug">Zgłoś nieskatalogowaną przyczynę &rarr;</p>
     `;
     container.appendChild(otherBtn);
 }
@@ -312,29 +368,30 @@ function selectFault(f) {
     selectedFault = f;
     renderFaultsForMachine(selectedMachine.id);
 
-    const noteInput = document.getElementById("manual-operator-note");
-    const noteLabel = document.getElementById("note-label");
+    const faultBadge = document.getElementById("active-fault-badge");
+    if (faultBadge) faultBadge.innerHTML = `<strong class="text-gold-400 font-mono-numbers">${f.code}</strong> - wybrano`;
 
+    const noteInput = document.getElementById("manual-operator-note");
     if (f.isCustom) {
         noteInput.classList.remove("border-graphite-750");
         noteInput.classList.add("border-amber-400", "bg-amber-500/10");
-        noteLabel.innerHTML = `<span class="text-amber-400 font-extrabold">⚠️ WYMAGANE POKA-YOKE: Wpisz konkretny objaw nowej usterki:</span>`;
+        noteInput.placeholder = "⚠️ WYMAGANE: Wpisz konkretny objaw nowej usterki...";
         noteInput.focus();
     } else {
         noteInput.classList.remove("border-amber-400", "bg-amber-500/10");
         noteInput.classList.add("border-graphite-750");
-        noteLabel.innerHTML = `Krótki objaw / uwagi z hali (opcjonalne):`;
+        noteInput.placeholder = "Wpisz krótki objaw z hali (np. pisk prowadnicy, zakleszczony ażur)...";
     }
 
     checkDispatchReadiness();
 }
 
-// 6. Poka-Yoke Czasu: Stoper Na Żywo & Kafelki (Krok 4)
+// 7. Krok 4: Poka-Yoke Czasu & Stoper
 function setTimeMode(mode) {
     durationType = mode;
     isLiveFinishedAndReady = false;
     clearPresetSelection();
-    document.getElementById("time-btn-live").className = "p-4 rounded-xl border-2 border-gold-500 bg-gold-500/20 text-white font-extrabold text-xs sm:text-sm transition flex flex-col items-center justify-center gap-1.5 shadow-lg";
+    document.getElementById("time-btn-live").className = "p-2.5 rounded-xl border-2 border-gold-500 bg-gold-500/20 text-white font-extrabold text-xs transition flex flex-col items-center justify-center gap-0.5 shadow-md";
     document.getElementById("custom-duration-input").value = "";
     updatePokaYokeActionButtons();
 }
@@ -348,10 +405,10 @@ function setTimePreset(minutes) {
 
     const targetBtn = document.getElementById(`time-btn-${minutes}`);
     if (targetBtn) {
-        targetBtn.className = "time-preset-btn p-4 rounded-xl border-2 border-gold-500 bg-gold-500/25 text-gold-300 font-extrabold text-xs sm:text-sm shadow-xl transition flex items-center justify-center";
+        targetBtn.className = "time-preset-btn p-2.5 rounded-xl border-2 border-gold-500 bg-gold-500/25 text-gold-300 font-extrabold text-xs shadow-md transition flex items-center justify-center";
     }
 
-    document.getElementById("time-btn-live").className = "p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-400 font-bold text-xs sm:text-sm transition flex flex-col items-center justify-center gap-1.5";
+    document.getElementById("time-btn-live").className = "p-2.5 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-400 font-bold text-xs transition flex flex-col items-center justify-center gap-0.5";
     document.getElementById("custom-duration-input").value = "";
     updatePokaYokeActionButtons();
 }
@@ -364,7 +421,7 @@ function setCustomTime() {
         durationMinutes = val;
         isLiveFinishedAndReady = false;
         clearPresetSelection();
-        document.getElementById("time-btn-live").className = "p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-400 font-bold text-xs sm:text-sm transition flex flex-col items-center justify-center gap-1.5";
+        document.getElementById("time-btn-live").className = "p-2.5 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-400 font-bold text-xs transition flex flex-col items-center justify-center gap-0.5";
     } else {
         durationMinutes = 0;
     }
@@ -373,18 +430,14 @@ function setCustomTime() {
 
 function clearPresetSelection() {
     document.querySelectorAll(".time-preset-btn").forEach(btn => {
-        btn.className = "time-preset-btn p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs sm:text-sm hover:border-gold-400 transition flex items-center justify-center";
+        btn.className = "time-preset-btn p-2.5 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-slate-200 font-extrabold text-xs hover:border-gold-400 transition flex items-center justify-center";
     });
 }
 
-// Stoper Na Żywo z blokadą zerowego czasu i ponownego startu
 function toggleLiveTimer() {
-    if (durationType !== "live") {
-        setTimeMode("live");
-    }
+    if (durationType !== "live") setTimeMode("live");
 
     if (!isLiveRunning) {
-        // Start pomiaru
         isLiveRunning = true;
         isLiveFinishedAndReady = false;
         liveSeconds = 0;
@@ -397,13 +450,10 @@ function toggleLiveTimer() {
         }, 1000);
 
         const btnToggle = document.getElementById("btn-live-toggle");
-        btnToggle.className = "px-10 py-5 bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-sm sm:text-base rounded-xl transition shadow-xl flex items-center justify-center gap-2.5 animate-pulse";
-        btnToggle.innerHTML = `<i data-lucide="square" class="w-6 h-6"></i> STOP AWARII`;
-        
-        // Poka-Yoke: Przycisk przesyłania jest w trakcie biegu bezwzględnie ukryty
+        btnToggle.className = "flex-1 py-3.5 bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs sm:text-sm rounded-xl transition shadow-lg flex items-center justify-center gap-2 animate-pulse";
+        btnToggle.innerHTML = `<i data-lucide="square" class="w-5 h-5"></i> STOP AWARII`;
         document.getElementById("btn-manual-dispatch").classList.add("hidden");
     } else {
-        // Zatrzymanie pomiaru
         if (liveSeconds === 0) {
             alert("Wymóg Poka-Yoke: Czas awarii wynosi 00:00. Zarejestruj rzeczywisty czas trwania.");
             return;
@@ -412,8 +462,6 @@ function toggleLiveTimer() {
         stopLiveTimerInternal();
         durationMinutes = Math.max(1, Math.ceil(liveSeconds / 60));
         isLiveFinishedAndReady = true;
-
-        // Poka-Yoke: Przycisk START zostaje wygaszony, pojawia się złoty PRZEŚLIJ
         updatePokaYokeActionButtons();
     }
     if (window.lucide) lucide.createIcons();
@@ -427,7 +475,6 @@ function stopLiveTimerInternal() {
     isLiveRunning = false;
 }
 
-// Logika widoczności przycisków akcji (Start/Stop vs Prześlij)
 function updatePokaYokeActionButtons() {
     const btnToggle = document.getElementById("btn-live-toggle");
     const btnDispatch = document.getElementById("btn-manual-dispatch");
@@ -437,22 +484,19 @@ function updatePokaYokeActionButtons() {
             btnToggle.classList.remove("hidden");
             btnDispatch.classList.add("hidden");
         } else if (isLiveFinishedAndReady) {
-            // Zakończono pomiar - ukryj START, pokaż PRZEŚLIJ
             btnToggle.classList.add("hidden");
             btnDispatch.classList.remove("hidden");
-            btnDispatch.innerHTML = `<i data-lucide="send" class="w-6 h-6"></i> PRZEŚLIJ MELDUNEK (${durationMinutes} MIN)`;
+            btnDispatch.innerHTML = `<i data-lucide="send" class="w-5 h-5"></i> PRZEŚLIJ MELDUNEK (${durationMinutes} MIN)`;
         } else {
-            // Stan początkowy - pokaż START, ukryj PRZEŚLIJ
             btnToggle.classList.remove("hidden");
-            btnToggle.className = "px-10 py-5 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-sm sm:text-base rounded-xl transition shadow-xl flex items-center justify-center gap-2.5";
-            btnToggle.innerHTML = `<i data-lucide="play" class="w-6 h-6"></i> START AWARII`;
+            btnToggle.className = "flex-1 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs sm:text-sm rounded-xl transition shadow-lg flex items-center justify-center gap-2";
+            btnToggle.innerHTML = `<i data-lucide="play" class="w-5 h-5"></i> START AWARII`;
             btnDispatch.classList.add("hidden");
         }
     } else {
-        // Tryb kafelkowy (10, 20, 30 min, Inny) - brak startu, od razu przesył
         btnToggle.classList.add("hidden");
         btnDispatch.classList.remove("hidden");
-        btnDispatch.innerHTML = `<i data-lucide="send" class="w-6 h-6"></i> PRZEŚLIJ MELDUNEK (${durationMinutes || 0} MIN)`;
+        btnDispatch.innerHTML = `<i data-lucide="send" class="w-5 h-5"></i> PRZEŚLIJ MELDUNEK (${durationMinutes || 0} MIN)`;
     }
 
     checkDispatchReadiness();
@@ -465,18 +509,9 @@ function checkDispatchReadiness() {
     const noteVal = noteInput.value.trim();
 
     let isReady = true;
-
-    // Warunek 1: Czy wybrano usterkę?
     if (!selectedFault) isReady = false;
-
-    // Warunek 2: Jeśli usterka to INNE/NOWE, czy pole opisu nie jest puste?
-    if (selectedFault && selectedFault.isCustom && noteVal.length < 3) {
-        isReady = false;
-    }
-
-    // Warunek 3: Czy czas > 0?
-    const calcMins = durationType === "live" ? durationMinutes : durationMinutes;
-    if (calcMins <= 0) isReady = false;
+    if (selectedFault && selectedFault.isCustom && noteVal.length < 3) isReady = false;
+    if (durationMinutes <= 0) isReady = false;
 
     if (isReady) {
         btnDispatch.disabled = false;
@@ -487,7 +522,7 @@ function checkDispatchReadiness() {
     }
 }
 
-// 7. Wysłanie zgłoszenia ręcznego do szyny MES
+// 8. Wysłanie zgłoszenia ręcznego do szyny MES
 function dispatchManualTelemetry() {
     if (!selectedFault) {
         alert("Wymóg Poka-Yoke: Zaznacz kod usterki przed nadaniem meldunku.");
@@ -503,15 +538,14 @@ function dispatchManualTelemetry() {
         return;
     }
 
-    const calculatedMinutes = durationType === "live" ? durationMinutes : durationMinutes;
-    if (calculatedMinutes <= 0) {
+    if (durationMinutes <= 0) {
         alert("Wymóg Poka-Yoke: Wprowadź poprawny czas trwania awarii.");
         return;
     }
 
     const faultName = selectedFault.isCustom ? `[NOWA]: ${noteText}` : selectedFault.name;
     const finalNote = noteText || `Zgłoszenie z terminala: ${selectedFault.name}`;
-    const calculatedCost = calculatedMinutes * selectedFault.costMin;
+    const calculatedCost = durationMinutes * selectedFault.costMin;
 
     const payload = {
         machineId: selectedMachine.id,
@@ -519,7 +553,7 @@ function dispatchManualTelemetry() {
         stationCode: selectedMachine.code,
         faultCode: selectedFault.code,
         faultDescription: faultName,
-        durationMin: calculatedMinutes,
+        durationMin: durationMinutes,
         operatorName: selectedOperator.name,
         operatorNote: finalNote,
         responsibleDept: selectedFault.dept,
@@ -531,7 +565,7 @@ function dispatchManualTelemetry() {
         publishTelemetryEvent(payload);
     }
 
-    // Reset stanu po wysłaniu z zachowaniem tożsamości operatora i stanowiska
+    // Reset po wysłaniu - zachowujemy zwiniętego operatora i wybraną maszynę!
     selectedFault = null;
     renderFaultsForMachine(selectedMachine.id);
 
@@ -541,16 +575,17 @@ function dispatchManualTelemetry() {
     isLiveFinishedAndReady = false;
     document.getElementById("live-timer-display").innerText = "00:00";
     noteInput.value = "";
+    document.getElementById("active-fault-badge").innerText = "Wybierz usterkę dla " + selectedMachine.code;
     setTimeMode("live");
 
     const statusInd = document.getElementById("manual-status-indicator");
-    statusInd.innerHTML = `<span class="text-gold-400 font-bold">Meldunek nadany do magistrali MES (+2.0s bufor). Stanowisko gotowe.</span>`;
+    statusInd.innerHTML = `<span class="text-gold-400 font-bold">Meldunek nadany do MES (+2.0s bufor). Stanowisko gotowe.</span>`;
     setTimeout(() => {
-        statusInd.innerHTML = `<span class="w-3 h-3 rounded-full bg-emerald-400"></span> Gotowość do rejestracji meldunku`;
+        statusInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Gotowość do nadania`;
     }, 4000);
 }
 
-// 8. Logika AUTO-MES (Ciągły licznik Uptime PLC)
+// 9. Logika AUTO-MES
 function startGlobalPlcUptimeCounter() {
     if (globalPlcUptimeInterval) clearInterval(globalPlcUptimeInterval);
     globalPlcUptimeInterval = setInterval(() => {
@@ -570,21 +605,17 @@ function selectAutoMachine(id) {
     autoMachineId = id;
     document.querySelectorAll(".auto-mach-btn").forEach((btn, idx) => {
         if (idx === id) {
-            btn.className = "auto-mach-btn p-5 sm:p-6 rounded-2xl border-2 border-cyan-500 bg-cyan-500/10 text-left transition shadow-lg";
+            btn.className = "auto-mach-btn p-4 rounded-xl border-2 border-cyan-500 bg-cyan-500/10 text-left transition shadow-md";
         } else {
-            btn.className = "auto-mach-btn p-5 sm:p-6 rounded-2xl border-2 border-graphite-750 bg-graphite-950 text-left transition hover:border-cyan-400";
+            btn.className = "auto-mach-btn p-4 rounded-xl border-2 border-graphite-750 bg-graphite-950 text-left transition hover:border-cyan-400";
         }
     });
 
-    // Przełączenie maszyny NIE KASUJE zegara, jeśli maszyna jest w trybie normalnym
-    if (!isPlcAlarm) {
-        resetPlcNormalState();
-    }
+    if (!isPlcAlarm) resetPlcNormalState();
 }
 
 function triggerPlcStop() {
     if (!isPlcAlarm) {
-        // Wystąpienie awarii
         isPlcAlarm = true;
         plcAlarmSeconds = 0;
         
@@ -598,20 +629,18 @@ function triggerPlcStop() {
             if (el) el.innerText = str;
         }, 1000);
 
-        // Losowanie 1 z 6 dedykowanych błędów
         const errors = PLC_ERRORS[autoMachineId] || PLC_ERRORS[0];
         activePlcError = errors[Math.floor(Math.random() * errors.length)];
 
-        // UI w stan alarmu
         const card = document.getElementById("plc-status-card");
-        card.className = "bg-graphite-950 border-2 border-rose-500 p-6 sm:p-7 rounded-2xl space-y-5 shadow-2xl";
+        card.className = "bg-graphite-950 border-2 border-rose-500 p-5 rounded-2xl space-y-4 shadow-2xl";
 
         const icon = document.getElementById("plc-status-icon");
-        icon.className = "w-12 h-12 rounded-xl bg-rose-500/20 border border-rose-400 flex items-center justify-center text-rose-400 animate-pulse";
-        icon.innerHTML = `<i data-lucide="alert-octagon" class="w-7 h-7"></i>`;
+        icon.className = "w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-400 flex items-center justify-center text-rose-400 animate-pulse";
+        icon.innerHTML = `<i data-lucide="alert-octagon" class="w-6 h-6"></i>`;
 
         const cycleText = document.getElementById("plc-cycle-text");
-        cycleText.className = "text-xs sm:text-sm font-mono-numbers font-bold text-rose-400 uppercase tracking-wider block";
+        cycleText.className = "text-xs font-mono-numbers font-bold text-rose-400 uppercase tracking-wider block";
         cycleText.innerText = "STAN STEROWNIKA: ZATRZYMANIE AWARYJNE (ALARM = TRUE)";
 
         document.getElementById("plc-active-title").innerText = activePlcError.desc;
@@ -623,12 +652,11 @@ function triggerPlcStop() {
         document.getElementById("plc-error-desc").innerText = activePlcError.desc;
 
         const btnToggle = document.getElementById("btn-plc-toggle");
-        btnToggle.className = "px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs sm:text-sm rounded-xl transition shadow-xl flex items-center justify-center gap-2.5";
-        btnToggle.innerHTML = `<i data-lucide="rotate-ccw" class="w-5 h-5"></i> KASUJ BŁĄD PLC (RESET CYKLU)`;
+        btnToggle.className = "px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2";
+        btnToggle.innerHTML = `<i data-lucide="rotate-ccw" class="w-4 h-4"></i> KASUJ BŁĄD PLC (RESET CYKLU)`;
 
         document.getElementById("btn-plc-dispatch").classList.remove("hidden");
     } else {
-        // Reset błędu
         resetPlcNormalState();
     }
     if (window.lucide) lucide.createIcons();
@@ -640,14 +668,14 @@ function resetPlcNormalState() {
     if (plcAlarmInterval) clearInterval(plcAlarmInterval);
 
     const card = document.getElementById("plc-status-card");
-    card.className = "bg-graphite-950 border-2 border-emerald-500/50 p-6 sm:p-7 rounded-2xl space-y-5";
+    card.className = "bg-graphite-950 border-2 border-emerald-500/50 p-5 rounded-2xl space-y-4";
 
     const icon = document.getElementById("plc-status-icon");
-    icon.className = "w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400";
-    icon.innerHTML = `<i data-lucide="check-circle-2" class="w-7 h-7"></i>`;
+    icon.className = "w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400";
+    icon.innerHTML = `<i data-lucide="check-circle-2" class="w-6 h-6"></i>`;
 
     const cycleText = document.getElementById("plc-cycle-text");
-    cycleText.className = "text-xs sm:text-sm font-mono-numbers font-bold text-emerald-400 uppercase tracking-wider block";
+    cycleText.className = "text-xs font-mono-numbers font-bold text-emerald-400 uppercase tracking-wider block";
     cycleText.innerText = "STAN STEROWNIKA: PRACA AUTOMATYCZNA (CYCLE_RUN = TRUE)";
 
     document.getElementById("plc-active-title").innerText = "Brak aktywnych kodów błędu w rejestrze PLC";
@@ -656,8 +684,8 @@ function resetPlcNormalState() {
     document.getElementById("plc-error-details").classList.add("hidden");
 
     const btnToggle = document.getElementById("btn-plc-toggle");
-    btnToggle.className = "px-8 py-4 bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs sm:text-sm rounded-xl transition shadow-xl flex items-center justify-center gap-2.5";
-    btnToggle.innerHTML = `<i data-lucide="octagon-alert" class="w-5 h-5"></i> ZATRZYMAJ MASZYNĘ (SYGNAŁ PLC)`;
+    btnToggle.className = "px-6 py-3 bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2";
+    btnToggle.innerHTML = `<i data-lucide="octagon-alert" class="w-4 h-4"></i> ZATRZYMAJ MASZYNĘ (SYGNAŁ PLC)`;
 
     document.getElementById("btn-plc-dispatch").classList.add("hidden");
     if (window.lucide) lucide.createIcons();
