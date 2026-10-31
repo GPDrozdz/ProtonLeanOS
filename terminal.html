@@ -32,11 +32,8 @@
             }
         }
     </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
-        .font-mono-numbers { font-family: 'JetBrains Mono', monospace; }
-    </style>
+    <!-- Zewnętrzny arkusz stylów -->
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bg-graphite-900 text-slate-100 min-h-screen flex flex-col p-4 sm:p-6 antialiased selection:bg-gold-500/20">
 
@@ -60,7 +57,6 @@
 
     <!-- Główny Formularz Zgłoszenia Awarii / Meldunku -->
     <main class="max-w-4xl w-full mx-auto bg-graphite-850 border-2 border-gold-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-        
         <div>
             <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
                 <i data-lucide="alert-triangle" class="w-5 h-5 text-gold-400"></i> Rejestracja Zdarzenia / Przestoju Maszyny
@@ -81,10 +77,10 @@
             </select>
         </div>
 
-        <!-- 2. Wybór Usterki ze Słownika (Kody Lean / UR) -->
+        <!-- 2. Kafelki Usterki -->
         <div class="space-y-2">
             <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Kod Usterki ze Słownika MES:</label>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div id="fault-buttons-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button type="button" onclick="selectFault('BLM_JAM', 'Zablokowany stół usuwania urobku / brak odbioru', 51, 75, 'Logistyka Wewnętrzna')" class="fault-btn p-3.5 rounded-xl border-2 border-gold-500/60 bg-gold-500/10 text-left hover:border-gold-400 transition">
                     <span class="text-[10px] font-mono-numbers font-bold text-gold-400 block">KOD: BLM_JAM</span>
                     <span class="text-xs font-bold text-white block mt-0.5">Zablokowany stół urobku (Laser BLM)</span>
@@ -108,7 +104,7 @@
             </div>
         </div>
 
-        <!-- 3. Czas Trwania i Notatka Operatora -->
+        <!-- 3. Czas i Notatka -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
                 <label class="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2">Czas Przestoju (min):</label>
@@ -120,7 +116,7 @@
             </div>
         </div>
 
-        <!-- Przycisk Wysłania Meldunku -->
+        <!-- Przycisk Wysłania -->
         <div class="pt-4 border-t-2 border-graphite-750 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
             <span id="transmit-status" class="text-xs font-mono-numbers text-slate-400 flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Gotowy do transmisji
@@ -129,70 +125,10 @@
                 <i data-lucide="radio" class="w-5 h-5"></i> Nadaj Meldunek do Magistrali Zakładowej
             </button>
         </div>
-
     </main>
 
-    <script>
-        lucide.createIcons();
-        const telemetryBus = new BroadcastChannel('proton_telemetry_bus');
-
-        let activeFault = {
-            code: 'BLM_JAM',
-            desc: 'Zablokowany stół usuwania urobku / brak odbioru',
-            duration: 51,
-            cost: 75,
-            dept: 'Logistyka Wewnętrzna'
-        };
-
-        function selectFault(code, desc, duration, cost, dept) {
-            activeFault = { code, desc, duration, cost, dept };
-            document.getElementById('fault-duration').value = duration;
-            
-            document.querySelectorAll('.fault-btn').forEach(b => {
-                b.className = "fault-btn p-3.5 rounded-xl border-2 border-graphite-750 bg-graphite-900 text-left hover:border-gold-400 transition";
-            });
-            event.currentTarget.className = "fault-btn p-3.5 rounded-xl border-2 border-gold-500/60 bg-gold-500/10 text-left hover:border-gold-400 transition";
-        }
-
-        function dispatchTelemetryEvent() {
-            const btn = document.getElementById('btn-dispatch');
-            const status = document.getElementById('transmit-status');
-            const stationId = parseInt(document.getElementById('station-select').value);
-            const duration = parseInt(document.getElementById('fault-duration').value);
-            const note = document.getElementById('operator-note').value;
-
-            // Przygotowanie pakietu JSON
-            const payload = {
-                timestamp: new Date().toISOString(),
-                eventId: 'EV-' + Math.floor(1000 + Math.random() * 9000),
-                machineId: stationId,
-                faultCode: activeFault.code,
-                faultDescription: activeFault.desc,
-                durationMin: duration,
-                costTotalPLN: duration * activeFault.cost,
-                operatorNote: note,
-                responsibleDept: activeFault.dept
-            };
-
-            // Animacja wysyłania po stronie terminala
-            btn.disabled = true;
-            btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Nadawanie do bufora MES...`;
-            status.innerHTML = `<span class="w-2 h-2 rounded-full bg-gold-400 animate-ping"></span> Przesyłanie pakietu telemetrii...`;
-            lucide.createIcons();
-
-            // Emitujemy pakiet przez BroadcastChannel
-            telemetryBus.postMessage(payload);
-
-            // Zapisujemy kopię w localStorage jako trwały bufor
-            localStorage.setItem('proton_last_event', JSON.stringify(payload));
-
-            setTimeout(() => {
-                btn.disabled = false;
-                btn.innerHTML = `<i data-lucide="radio" class="w-5 h-5"></i> Nadaj Meldunek do Magistrali Zakładowej`;
-                status.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Wysłano pomyślnie (Pakiet: ${payload.eventId})`;
-                lucide.createIcons();
-            }, 600);
-        }
-    </script>
+    <!-- Zewnętrzne moduły JS -->
+    <script src="js/bus.js"></script>
+    <script src="js/terminal.js"></script>
 </body>
 </html>

@@ -1,0 +1,90 @@
+[
+  {
+    "code": "BLM_JAM",
+    "machineId": 0,
+    "machineName": "Laser BLM Płytowy CNC",
+    "name": "Zablokowany stół usuwania urobku / brak odbioru ażuru",
+    "category": "Logistyka Wewnętrzna",
+    "costPerMinPLN": 75,
+    "defaultDurationMin": 51,
+    "initialHypothesis": "Brak mikromostków w oprogramowaniu CAM lub falowanie arkusza blachy gr. 8.0 mm.",
+    "severity": "CRITICAL"
+  },
+  {
+    "code": "TUBE_FEED",
+    "machineId": 1,
+    "machineName": "Laser Rur i Profili BLM Tube",
+    "name": "Zacięcie automatycznego podajnika wiązki profili ramowych",
+    "category": "UR - Mechanika",
+    "costPerMinPLN": 75,
+    "defaultDurationMin": 36,
+    "initialHypothesis": "Skręcenie hutnicze profili 80x80x5 mm lub rozkalibrowanie ramion chwytaka.",
+    "severity": "HIGH"
+  },
+  {
+    "code": "PLASMA_GRID",
+    "machineId": 2,
+    "machineName": "Wycinarka Plazmowa HD",
+    "name": "Wypalenie i żużlowanie rusztu nośnego stołu",
+    "category": "UR - Oprzyrządowanie",
+    "costPerMinPLN": 60,
+    "defaultDurationMin": 14,
+    "initialHypothesis": "Przekroczenie interwału TPM wymiany segmentów rusztu roboczego.",
+    "severity": "MEDIUM"
+  },
+  {
+    "code": "BENDER_SMED",
+    "machineId": 3,
+    "machineName": "Giętarka do Rur CNC",
+    "name": "Przekroczenie normy przezbrojenia matryc (SMED > 8.6 min)",
+    "category": "Organizacja / Lean",
+    "costPerMinPLN": 45,
+    "defaultDurationMin": 19,
+    "initialHypothesis": "Brak kompletacji trzpieni i matryc na wózku przygotowawczym przed zakończeniem partii.",
+    "severity": "MEDIUM"
+  },
+  {
+    "code": "SAW_TOOTH",
+    "machineId": 4,
+    "machineName": "Piła Tarczowa do Metalu",
+    "name": "Wyszczerbienie zębów tarczy na pakiecie profili",
+    "category": "UR - Oprzyrządowanie",
+    "costPerMinPLN": 40,
+    "defaultDurationMin": 27,
+    "initialHypothesis": "Zbyt wysoki posuw cięcia przy stępionej krawędzi natarcia zębów.",
+    "severity": "HIGH"
+  },
+  {
+    "code": "PRESS_OFFSET",
+    "machineId": 5,
+    "machineName": "Prasa Krawędziowa CNC",
+    "name": "Odchyłka kątowa gięcia poszycia powyżej tolerancji ±0.5°",
+    "category": "Jakość / Technologia",
+    "costPerMinPLN": 55,
+    "defaultDurationMin": 15,
+    "initialHypothesis": "Zróżnicowana sprężystość partii blachy lub zużycie wkładki rowka matrycy V.",
+    "severity": "LOW"
+  },
+  {
+    "code": "ROBOT_NOZZLE",
+    "machineId": 6,
+    "machineName": "Robot Spawalniczy - Cela A",
+    "name": "Zlepienie dyszy gazowej i zatrzymanie podajnika drutu",
+    "category": "UR - Automatyka",
+    "costPerMinPLN": 80,
+    "defaultDurationMin": 12,
+    "initialHypothesis": "Niedrożność stacji automatycznego czyszczenia i frezowania dyszy palnika.",
+    "severity": "MEDIUM"
+  },
+  {
+    "code": "GALW_HOLE",
+    "machineId": 8,
+    "machineName": "Wykończenie Przedgalwaniczne",
+    "name": "Odrzut partii: brak otworów technologicznych odpowietrzających pod cynk",
+    "category": "Technologia / SOP",
+    "costPerMinPLN": 50,
+    "defaultDurationMin": 42,
+    "initialHypothesis": "Pominięcie operacji wiercenia na etapie przygotowania profili ramowych.",
+    "severity": "CRITICAL"
+  }
+]

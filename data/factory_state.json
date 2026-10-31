@@ -1,0 +1,204 @@
+[
+  {
+    "id": 0,
+    "name": "Laser BLM Płytowy CNC",
+    "role": "Cięcie blach poszycia kontenerów i den palet",
+    "a": 71.5,
+    "p": 88.4,
+    "q": 99.1,
+    "oee": 62.6,
+    "load": 94.0,
+    "status": "alert",
+    "statusText": "Przestój (51 min)",
+    "statusClass": "text-rose-300 bg-rose-500/20 border-rose-500/50",
+    "operator": "Jan Kowalski (UR: Radosław M.)",
+    "notes": "Zgłoszono problem ze zgrzytem prowadnicy przy powrocie stołu paletowego po cięciu blachy 8.0 mm.",
+    "telemetry": [
+      { "label": "Czas między załadunkami stołów", "val": "1.4 min" },
+      { "label": "Czas usuwania urobku i ażuru", "val": "4.8 min (Przekroczony)" },
+      { "label": "Efektywny czas cięcia (Beam-on)", "val": "68.2%" },
+      { "label": "Grubość arkusza bieżącego", "val": "S355 / 8.0 mm" }
+    ]
+  },
+  {
+    "id": 1,
+    "name": "Laser Rur i Profili BLM Tube",
+    "role": "Cięcie profili słupów i ram palet butlowych",
+    "a": 78.0,
+    "p": 91.2,
+    "q": 98.7,
+    "oee": 70.2,
+    "load": 88.5,
+    "status": "warning",
+    "statusText": "Podajnik wiązki",
+    "statusClass": "text-amber-300 bg-amber-500/20 border-amber-500/50",
+    "operator": "Piotr Nowak",
+    "notes": "Wiązka profili 80x80 wykazywała lekkie skręcenie hutnicze; konieczna ręczna korekta chwytaka.",
+    "telemetry": [
+      { "label": "Długość linii cięcia na kg materiału", "val": "0.42 m/kg" },
+      { "label": "Czas załadunku nowej wiązki", "val": "3.2 min" },
+      { "label": "Takt docinania słupa", "val": "44 s / szt." },
+      { "label": "Profil bieżący", "val": "Profil 80x80x5 mm" }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Wycinarka Plazmowa HD",
+    "role": "Cięcie grubych blach dennych i naroży",
+    "a": 79.5,
+    "p": 89.0,
+    "q": 97.4,
+    "oee": 68.9,
+    "load": 82.0,
+    "status": "warning",
+    "statusText": "Przezbrojenie stołu",
+    "statusClass": "text-amber-300 bg-amber-500/20 border-amber-500/50",
+    "operator": "Marek Zając",
+    "notes": "Wymieniono ruszt roboczy po 2 tygodniach eksploatacji.",
+    "telemetry": [
+      { "label": "Średni czas przezbrojenia stołu", "val": "14.2 min" },
+      { "label": "Prędkość cięcia grubych blach", "val": "1 850 mm/min" },
+      { "label": "Czas jarzenia łuku plazmowego", "val": "74.0%" },
+      { "label": "Grubość cięcia", "val": "Blacha gr. 15 mm" }
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Giętarka do Rur i Profili CNC",
+    "role": "Gięcie pałąków ochronnych i rur palet",
+    "a": 82.4,
+    "p": 92.5,
+    "q": 99.0,
+    "oee": 75.5,
+    "load": 78.0,
+    "status": "normal",
+    "statusText": "SMED: 8.6 min",
+    "statusClass": "text-gold-300 bg-gold-500/20 border-gold-400",
+    "operator": "Tomasz D.",
+    "notes": "Wdrożono wózek szybkiego przezbrojenia matryc (SMED 8.6 min zachowany).",
+    "telemetry": [
+      { "label": "Średnia mierzona wymiana oprzyrządowania", "val": "8.6 min (Standard SMED)" },
+      { "label": "Odchyłka kątowa 1. detalu", "val": "+0.2° (W tolerancji)" },
+      { "label": "Czas cyklu gięcia pałąka", "val": "28 s" },
+      { "label": "Matryca robocza", "val": "Rura Ø 48.3 x 3.6 mm" }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Piła Tarczowa do Metalu",
+    "role": "Precyzyjne docinanie profili pod kątem",
+    "a": 81.0,
+    "p": 90.0,
+    "q": 98.2,
+    "oee": 71.6,
+    "load": 75.0,
+    "status": "warning",
+    "statusText": "Kontrola tarczy",
+    "statusClass": "text-amber-300 bg-amber-500/20 border-amber-500/50",
+    "operator": "Krzysztof B.",
+    "notes": "Tarcza wykazuje pierwsze objawy stępienia na pakietach ceowników.",
+    "telemetry": [
+      { "label": "Trwałość tarczy tnącej", "val": "68% (Zalecany przegląd)" },
+      { "label": "Czas cięcia pakietu", "val": "18 s" },
+      { "label": "Docisk hydrauliczny", "val": "95 bar" },
+      { "label": "Chłodzenie mgłą olejową", "val": "Ciśnienie 4.2 bar" }
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Prasa Krawędziowa CNC",
+    "role": "Zaginanie poszyć kontenerów i profili zimnogiętych",
+    "a": 91.0,
+    "p": 93.4,
+    "q": 99.2,
+    "oee": 84.3,
+    "load": 85.0,
+    "status": "ok",
+    "statusText": "Stabilna praca",
+    "statusClass": "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+    "operator": "Andrzej W.",
+    "notes": "Kalibracja zderzaków w normie, profilowanie trapezowe bez zadziorów.",
+    "telemetry": [
+      { "label": "Czas ustawiania zderzaków", "val": "4.2 min" },
+      { "label": "Siła nacisku bieżąca", "val": "140 T" },
+      { "label": "Program gięcia", "val": "PROG_TRAPEZ_04" }
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Robot Spawalniczy - Cela A",
+    "role": "Automatyczne spawanie ram palet butlowych",
+    "a": 93.5,
+    "p": 94.0,
+    "q": 99.4,
+    "oee": 87.4,
+    "load": 92.0,
+    "status": "ok",
+    "statusText": "W takcie (98%)",
+    "statusClass": "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+    "operator": "Cela Automatyczna (Nadzór: M. Bąk)",
+    "notes": "Dysza czyszczona automatycznie co 15 cykli spawania.",
+    "telemetry": [
+      { "label": "Czas jarzenia łuku (Arc-on)", "val": "88.6%" },
+      { "label": "Czas obrotu pozycjonera", "val": "6.2 s" },
+      { "label": "Zużycie drutu spawalniczego", "val": "1.2 kg/ramę" }
+    ]
+  },
+  {
+    "id": 7,
+    "name": "Stanowiska Spawalnicze Manualne (MIG)",
+    "role": "Szczepianie kontenerów i spawy węzłowe",
+    "a": 89.0,
+    "p": 92.0,
+    "q": 96.8,
+    "oee": 79.3,
+    "load": 96.0,
+    "status": "ok",
+    "statusText": "Praca w toku",
+    "statusClass": "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+    "operator": "Zespół Spawaczy (Bryg. D. Lubas)",
+    "notes": "Kontrola jakości spoin pachwinowych: brak porów w spoinie ramy kontenera.",
+    "telemetry": [
+      { "label": "Zużycie gazu M21 (Ar/CO2)", "val": "14 l/min" },
+      { "label": "Norma czasowa zlecenia", "val": "94% wykonania" }
+    ]
+  },
+  {
+    "id": 8,
+    "name": "Wykończenie Przedgalwaniczne",
+    "role": "Gratowanie, czyszczenie, otwory pod ocynk",
+    "a": 84.0,
+    "p": 91.0,
+    "q": 96.0,
+    "oee": 73.4,
+    "load": 98.0,
+    "status": "warning",
+    "statusText": "Zator bufora",
+    "statusClass": "text-amber-300 bg-amber-500/20 border-amber-500/50",
+    "operator": "Stanowisko Czyszczenia C-01",
+    "notes": "Partia ram zatrzymana z powodu braku otworów odpowietrzających w profilach.",
+    "telemetry": [
+      { "label": "Kontrola otworów odpowietrzających", "val": "3 szt. odrzucone" },
+      { "label": "Lead time partii do ocynku", "val": "4.2 h" }
+    ]
+  },
+  {
+    "id": 9,
+    "name": "Stanowiska Montażu Końcowego",
+    "role": "Okucia, rygle kontenerów, pasy mocujące butle",
+    "a": 94.5,
+    "p": 96.0,
+    "q": 99.5,
+    "oee": 90.3,
+    "load": 90.0,
+    "status": "ok",
+    "statusText": "W normie",
+    "statusClass": "text-emerald-300 bg-emerald-500/20 border-emerald-500/50",
+    "operator": "Zespół Montażu Końcowego",
+    "notes": "Kompletacja rygli i zawiasów kontenerowych w 100% zgodna z zamówieniem.",
+    "telemetry": [
+      { "label": "Takt montażu końcowego", "val": "22 min / paletę" },
+      { "label": "Kompletacja osprzętu", "val": "100%" }
+    ]
+  }
+]
