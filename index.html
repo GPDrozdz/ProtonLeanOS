@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proton Lean OS v2.5 - AI Operations Platform</title>
+    <title>Proton Lean OS v3.0 - AI Operations Platform</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Icons CDN -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Biblioteka MQTT przez WebSocket (Zero instalacji, działa w przeglądarce) -->
+    <!-- Klient MQTT przez WebSocket (Zero instalacji, działa prosto z przeglądarki) -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script>
         tailwind.config = {
@@ -100,7 +100,7 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <span class="font-extrabold text-xl tracking-wider text-white">PROTON<span class="text-gold-400">LEAN</span></span>
-                        <span class="text-xs font-mono-numbers font-bold bg-gold-500/20 text-gold-300 border border-gold-400/50 px-2 py-0.5 rounded-md">v2.5 PRO</span>
+                        <span class="text-xs font-mono-numbers font-bold bg-gold-500/20 text-gold-300 border border-gold-400/50 px-2 py-0.5 rounded-md">v3.0 PRO</span>
                     </div>
                     <p class="text-xs text-slate-300 font-medium tracking-tight">Heavy Fabrication & Assembly Management OS</p>
                 </div>
@@ -122,7 +122,7 @@
                 </button>
             </nav>
 
-            <!-- Actions: Dzwonek Push-Pull + Terminal + Status AI -->
+            <!-- Actions: Dzwonek Push-Pull + Terminal + Status AI z Dyskretną Zębatką Konfiguracji -->
             <div class="flex items-center gap-3 flex-shrink-0">
                 <button onclick="toggleNotificationDrawer()" id="btn-notification-bell" class="relative p-2.5 rounded-xl bg-graphite-950 hover:bg-graphite-850 border-2 border-graphite-750 text-slate-200 hover:text-gold-400 transition shadow-sm">
                     <i data-lucide="bell" class="w-5 h-5"></i>
@@ -133,9 +133,15 @@
                     <i data-lucide="external-link" class="w-4 h-4"></i> Otwórz Terminal MES
                 </a>
 
-                <div id="ai-global-status" class="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 text-xs font-mono-numbers font-bold shadow-sm">
-                    <span id="ai-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span id="ai-status-text">Gemini 2.5: Aktywny</span>
+                <!-- Dyskretny moduł AI z przyciskiem zębatki dla klucza API -->
+                <div class="hidden sm:flex items-center gap-1.5">
+                    <div id="ai-global-status" class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 text-xs font-mono-numbers font-bold shadow-sm cursor-pointer" onclick="openApiKeyModal()" title="Kliknij, aby skonfigurować silnik AI">
+                        <span id="ai-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span id="ai-status-text">Silnik AI: Edge / Live</span>
+                    </div>
+                    <button onclick="openApiKeyModal()" title="Konfiguracja klucza Gemini API (Google AI Studio)" class="p-2 rounded-xl bg-graphite-950 hover:bg-graphite-850 border-2 border-graphite-750 text-slate-300 hover:text-gold-400 transition shadow-sm">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                    </button>
                 </div>
             </div>
         </div>
@@ -211,7 +217,7 @@
                                     <circle cx="50" cy="50" r="42" stroke="#f43f5e" stroke-width="8" stroke-dasharray="90.0 173.9" stroke-dashoffset="0" stroke-linecap="butt" fill="transparent"/>
                                     <circle cx="50" cy="50" r="42" stroke="#f59e0b" stroke-width="8" stroke-dasharray="66.8 197.1" stroke-dashoffset="-92.0" stroke-linecap="butt" fill="transparent"/>
                                     <circle cx="50" cy="50" r="42" stroke="#eab308" stroke-width="8" stroke-dasharray="47.0 216.9" stroke-dashoffset="-160.8" stroke-linecap="butt" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="42" stroke="#64748b" stroke-width="8" stroke-dasharray="32.8 231.1" stroke-dashoffset="-209.8" stroke-linecap="butt" fill="transparent"/>
+                                    <circle cx="50" cy="60" r="42" stroke="#64748b" stroke-width="8" stroke-dasharray="32.8 231.1" stroke-dashoffset="-209.8" stroke-linecap="butt" fill="transparent"/>
                                     <circle cx="50" cy="50" r="42" stroke="#334155" stroke-width="8" stroke-dasharray="20.2 243.7" stroke-dashoffset="-243.6" stroke-linecap="butt" fill="transparent"/>
                                 </svg>
                                 <div class="absolute inset-0 flex flex-col items-center justify-center">
@@ -847,7 +853,54 @@
         </div>
     </div>
 
-    <!-- Status Footer + Przycisk Twardego Resetu Symulacji -->
+    <!-- MODAL: DYSKRETNA KONFIGURACJA GEMINI API KEY -->
+    <div id="api-key-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-graphite-900 border-[3px] border-gold-500/80 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="px-6 py-4.5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 border border-gold-400/50 flex items-center justify-center font-bold">
+                        <i data-lucide="key" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-extrabold text-white uppercase tracking-wider">Konfiguracja Silnika Gemini AI</h3>
+                        <p class="text-xs text-slate-300 font-mono-numbers">Dyskretny magazyn lokalny (localStorage)</p>
+                    </div>
+                </div>
+                <button onclick="closeApiKeyModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-4 text-xs">
+                <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-slate-300 leading-relaxed space-y-2">
+                    <p><strong class="text-gold-400">Poka-Yoke dla audytu i konkursu:</strong></p>
+                    <p>Gdy to pole jest puste, system działa w 100% autonomicznie w oparciu o <strong>Wbudowany Silnik Regułowy (Edge Expert Offline)</strong>. Juror nie musi posiadać ani konfigurować żadnego klucza.</p>
+                    <p>Wklejenie klucza z <a href="https://aistudio.google.com/" target="_blank" class="text-gold-400 underline font-bold">Google AI Studio</a> przełącza aplikację na zapytania w chmurze (Gemini 2.5 Flash).</p>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Klucz Gemini API (Google Generative AI):</label>
+                    <input type="password" id="gemini-api-key-input" placeholder="AIzaSy..." class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono-numbers focus:outline-none transition">
+                </div>
+
+                <div id="api-key-status-msg" class="text-xs font-mono-numbers font-semibold text-slate-400">
+                    Status: Sprawdzanie...
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex items-center justify-between gap-3">
+                <button onclick="clearSavedApiKey()" class="text-xs text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Usuń klucz
+                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="closeApiKeyModal()" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">Anuluj</button>
+                    <button onclick="saveApiKeyFromModal()" class="px-5 py-2 bg-gold-500 hover:bg-gold-400 text-graphite-950 text-xs font-extrabold rounded-xl transition shadow-md">Zapisz i Aktywuj</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Footer + Wskaźnik Magistrali MES & Przycisk Twardego Resetu Symulacji -->
     <footer class="bg-graphite-900 border-t border-graphite-750 py-4 mt-auto">
         <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300">
             <div class="flex items-center gap-2">
@@ -856,7 +909,7 @@
             </div>
             
             <div class="flex items-center gap-4 text-xs font-mono-numbers font-medium">
-                <span>Magistrala MES: proton_telemetry_bus</span>
+                <span class="bus-status-indicator">Magistrala MES: Inicjalizacja...</span>
                 <span>Pamięć trwała: localStorage active</span>
                 
                 <!-- Przycisk Twardego Resetu Symulacji z ikoną rotate-ccw -->
@@ -869,8 +922,9 @@
         </div>
     </footer>
 
-    <!-- Zewnętrzne moduły JS -->
+    <!-- Zewnętrzne moduły JS (w odpowiedniej kolejności zależności) -->
     <script src="js/bus.js"></script>
+    <script src="js/gemini_engine.js"></script>
     <script src="js/dashboard.js"></script>
 </body>
 </html>

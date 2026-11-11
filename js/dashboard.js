@@ -1,6 +1,7 @@
 /**
- * Proton Lean OS - Executive Dashboard Logic (v2.7)
- * Płynna 3-sekundowa animacja startowa HUD, trwałość stanu (20 palet), rotacja wąskiego gardła i twardy reset.
+ * Proton Lean OS - Executive Dashboard Logic (v3.0 Gemini Dual-Core Ready)
+ * Płynna 3-sekundowa animacja startowa HUD, hybrydowy silnik AI (Gemini Cloud + Edge Offline),
+ * trwałość stanu, rotacja wąskiego gardła i twardy reset.
  */
 
 const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v26';
@@ -104,6 +105,7 @@ async function initDashboard() {
     renderDrawerEvents();
     recalculateBottleneckWidget();
     startBackgroundProductionTicker();
+    updateAiStatusBadge();
 
     // Uruchomienie 3-sekundowej animacji narastania wykresów HUD
     animateHudRingsOnStartup();
@@ -119,19 +121,15 @@ async function initDashboard() {
 // 2. 3-sekundowa Animacja Startowa Wykresów Pierścieniowych HUD
 function animateHudRingsOnStartup() {
     setTimeout(() => {
-        // Pierścień A (Dostępność: 78.4% -> luka: 58.4 z 270.2)
         const ringA = document.getElementById('oee-ring-a');
         if (ringA) ringA.style.strokeDashoffset = "58.4";
 
-        // Pierścień P (Wydajność: 89.2% -> luka: 23.1 z 213.6)
         const ringP = document.getElementById('oee-ring-p');
         if (ringP) ringP.style.strokeDashoffset = "23.1";
 
-        // Pierścień Q (Jakość: 98.6% -> luka: 2.2 z 157.1)
         const ringQ = document.getElementById('oee-ring-q');
         if (ringQ) ringQ.style.strokeDashoffset = "2.2";
 
-        // Pierścień Realizacji Planu Zlecenia (r=40, obwód=251.3)
         const donutPlan = document.getElementById('donut-plan-circle');
         if (donutPlan) {
             const palletsPct = (productionState.palletsDone / productionState.palletsTarget) * 100;
@@ -175,7 +173,6 @@ function savePersistentStorage() {
     }
 }
 
-// Twardy reset symulacji fabryki (ikona rotate-ccw w stopce)
 function resetFactorySimulationState() {
     if (confirm("Czy na pewno chcesz zresetować symulację fabryki do stanu początkowego?\n(Spowoduje to wyczyszczenie kolejki, historii CAPA oraz reset produkcji do 20 palet).")) {
         localStorage.removeItem(STORAGE_KEY_QUEUE);
@@ -188,7 +185,7 @@ function resetFactorySimulationState() {
     }
 }
 
-// 4. Automatyczny Takt Produkcji (~2 palety na minutę w tle)
+// 4. Automatyczny Takt Produkcji w tle
 function startBackgroundProductionTicker() {
     setInterval(() => {
         if (productionState.palletsDone < productionState.palletsTarget) {
@@ -200,7 +197,7 @@ function startBackgroundProductionTicker() {
     }, 30000);
 }
 
-// 5. Odbiór meldunku z magistrali (Zasada Push)
+// 5. Odbiór meldunku z magistrali
 function handleIncomingTelemetry(payload) {
     if (!payload) return;
 
@@ -217,7 +214,6 @@ function handleIncomingTelemetry(payload) {
     renderDrawerEvents();
     recalculateProductionImpact(payload);
 
-    // Aktualizacja stanu gniazda na liście maszyn
     const target = machineFleet.find(m => m.id === payload.machineId);
     if (target) {
         target.a = Math.max(45, Math.round(target.a - (payload.durationMin * 0.3)));
@@ -233,7 +229,7 @@ function handleIncomingTelemetry(payload) {
     showToastNotification(payload);
 }
 
-// 6. Przeliczanie matematyczne wykonania planu & Wykresy Kołowe
+// 6. Przeliczanie matematyczne wykonania planu & Wskaźników
 function recalculateProductionImpact(payload) {
     const mins = payload.durationMin || 10;
     productionState.totalLossPLN += payload.costTotalPLN;
@@ -293,7 +289,6 @@ function updateProductionMetricsUI() {
     if (totalLossEl) totalLossEl.innerText = `${productionState.totalLossPLN.toLocaleString('pl-PL')} PLN`;
     if (summaryPercentEl) summaryPercentEl.innerText = `${totalFulfillment}%`;
 
-    // Aktualizacja pierścienia realizacji planu
     const donutCircle = document.getElementById('donut-plan-circle');
     const donutText = document.getElementById('donut-plan-text');
     if (donutCircle && donutText) {
@@ -303,7 +298,6 @@ function updateProductionMetricsUI() {
         donutText.innerText = `${totalFulfillment}%`;
     }
 
-    // Licznik Pareto
     const paretoMinutes = document.getElementById('donut-pareto-minutes');
     const paretoTotal = document.getElementById('pareto-total-time');
     if (paretoMinutes) paretoMinutes.innerText = productionState.totalDowntimeMin;
@@ -346,7 +340,6 @@ function recalculateBottleneckWidget() {
         return;
     }
 
-    // Promocja kolejnej maszyny bez zatwierdzonego CAPA (G-01 -> G-02 -> G-09)
     const candidate = DEFAULT_BOTTLENECK_FLEET.find(m => !resolvedMachineIds.includes(m.id));
 
     if (candidate) {
@@ -528,7 +521,64 @@ function pullSpecificEventToCapa(index) {
     document.getElementById('capa-human-input').value = `[Zgłoszenie ${ev.source} / ${ev.operatorName}]: ${ev.operatorNote}`;
 }
 
-// 10. Sztab Decyzyjny 5-Why, Gemini AI & Manager Override
+// 10. Zarządzanie Kluczem Gemini API (Dyskretny Modal)
+function openApiKeyModal() {
+    const modal = document.getElementById('api-key-modal');
+    const input = document.getElementById('gemini-api-key-input');
+    const msg = document.getElementById('api-key-status-msg');
+
+    if (modal && window.GeminiEngine) {
+        input.value = GeminiEngine.getApiKey();
+        if (GeminiEngine.hasActiveApiKey()) {
+            msg.innerHTML = `Status: <span class="text-emerald-400 font-bold">Klucz zapisany. Aktywny tryb Gemini 2.5 Live (Chmura).</span>`;
+        } else {
+            msg.innerHTML = `Status: <span class="text-amber-400 font-bold">Brak klucza. Aktywny tryb autonomiczny (Edge Expert Offline).</span>`;
+        }
+        modal.classList.remove('hidden');
+    }
+}
+
+function closeApiKeyModal() {
+    const modal = document.getElementById('api-key-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function saveApiKeyFromModal() {
+    const input = document.getElementById('gemini-api-key-input');
+    if (window.GeminiEngine && input) {
+        GeminiEngine.setApiKey(input.value);
+        updateAiStatusBadge();
+        closeApiKeyModal();
+        alert("Konfiguracja silnika AI zaktualizowana.");
+    }
+}
+
+function clearSavedApiKey() {
+    if (window.GeminiEngine) {
+        GeminiEngine.setApiKey('');
+        const input = document.getElementById('gemini-api-key-input');
+        if (input) input.value = '';
+        updateAiStatusBadge();
+        closeApiKeyModal();
+        alert("Klucz usunięty. Przełączono w tryb autonomiczny Edge Expert Offline.");
+    }
+}
+
+function updateAiStatusBadge() {
+    const statusText = document.getElementById('ai-status-text');
+    const statusBox = document.getElementById('ai-global-status');
+    if (!statusText || !window.GeminiEngine) return;
+
+    if (GeminiEngine.hasActiveApiKey()) {
+        statusText.innerText = "Gemini 2.5 Live (Cloud)";
+        if (statusBox) statusBox.className = "flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gold-500/15 border-2 border-gold-400 text-gold-300 text-xs font-mono-numbers font-bold shadow-sm cursor-pointer";
+    } else {
+        statusText.innerText = "Silnik AI: Edge Offline";
+        if (statusBox) statusBox.className = "flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 text-xs font-mono-numbers font-bold shadow-sm cursor-pointer";
+    }
+}
+
+// 11. Sztab Decyzyjny 5-Why, Gemini Dual-Engine & Manager Override
 function injectPresetPrompt(type) {
     const input = document.getElementById('capa-human-input');
     if (!input) return;
@@ -539,16 +589,17 @@ function injectPresetPrompt(type) {
     }
 }
 
-function triggerCapaAnalysis() {
+async function triggerCapaAnalysis() {
     const rawInput = document.getElementById('capa-human-input').value.trim();
     const inputLower = rawInput.toLowerCase();
     const area = document.getElementById('capa-result-area');
     const btn = document.getElementById('btn-run-capa');
 
+    // AI Safety Interlock check
     if (isHalLocked) {
         if (inputLower.includes('sprawdz dane') || inputLower.includes('sprawdź dane')) {
             isHalLocked = false;
-            restoreGlobalAiStatus();
+            updateAiStatusBadge();
             executeNormalCapaFlow(area, btn, true, rawInput);
             return;
         } else {
@@ -563,14 +614,16 @@ function triggerCapaAnalysis() {
     btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Wnioskowanie przyczynowe Gemini...`;
     if (window.lucide) lucide.createIcons();
 
+    const isLive = window.GeminiEngine && GeminiEngine.hasActiveApiKey();
+
     area.innerHTML = `
         <div class="bg-graphite-950 p-6 rounded-2xl border-2 border-graphite-750 space-y-4">
             <div class="flex items-center justify-between text-xs font-bold">
                 <span id="capa-thought-status" class="text-gold-400 flex items-center gap-2">
                     <span class="w-2.5 h-2.5 rounded-full bg-gold-400 animate-ping"></span>
-                    [1/4] Zaciąganie parametrów z magistrali MES...
+                    [1/3] Pobieranie parametrów z telemetrii MES...
                 </span>
-                <span class="font-mono-numbers text-slate-300">Gemini 2.5 Multi-Agent</span>
+                <span class="font-mono-numbers text-slate-300">${isLive ? 'Gemini 2.5 Flash API' : 'Edge Inference Engine'}</span>
             </div>
             <div class="w-full bg-graphite-900 h-3 rounded-full overflow-hidden border border-graphite-750">
                 <div id="capa-progress-bar" class="bg-gradient-to-r from-gold-500 to-amber-400 h-full transition-all duration-700" style="width: 25%"></div>
@@ -579,54 +632,73 @@ function triggerCapaAnalysis() {
     `;
 
     setTimeout(() => {
-        document.getElementById('capa-thought-status').innerText = "[2/4] Integracja notatek inżyniera i warunków brzegowych...";
-        document.getElementById('capa-progress-bar').style.width = "55%";
-    }, 700);
+        const statusEl = document.getElementById('capa-thought-status');
+        const barEl = document.getElementById('capa-progress-bar');
+        if (statusEl) statusEl.innerText = "[2/3] Integracja notatek inżyniera z Gemba i budowa drzewa...";
+        if (barEl) barEl.style.width = "65%";
+    }, 600);
 
-    setTimeout(() => {
-        document.getElementById('capa-thought-status').innerText = isHalTrigger 
-            ? "[3/4] Weryfikacja reguł bezpieczeństwa procesu (AI Guardrail)..."
-            : "[3/4] Generowanie poziomów drzewa 5-Why i hipotezy źródłowej...";
-        document.getElementById('capa-progress-bar').style.width = "85%";
-    }, 1500);
+    // Kontekst incydentu
+    const incidentData = activeIncidentContext || {
+        machineName: document.getElementById('bottleneck-machine-name') ? document.getElementById('bottleneck-machine-name').innerText : "Laser BLM Płytowy CNC",
+        stationCode: "G-01",
+        faultCode: "BLM_JAM",
+        faultDescription: document.getElementById('capa-fault-headline') ? document.getElementById('capa-fault-headline').innerText : "Zablokowany stół urobku",
+        durationMin: 51,
+        costTotalPLN: 3825
+    };
 
-    setTimeout(() => {
+    try {
+        if (isHalTrigger) {
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="bot" class="w-4 h-4"></i> Generuj Kaskadę 5-Why (Gemini AI)`;
+                isHalLocked = true;
+                setHalGlobalStatus();
+                area.innerHTML = `
+                    <div class="p-6 rounded-2xl bg-gradient-to-br from-rose-950/80 via-graphite-950 to-graphite-950 border-[3px] border-rose-500 shadow-2xl space-y-4">
+                        <div class="flex items-center gap-4">
+                            <div class="w-14 h-14 rounded-full bg-rose-600 flex items-center justify-center hal-eye-glow flex-shrink-0 border-2 border-white">
+                                <div class="w-4 h-4 rounded-full bg-white"></div>
+                            </div>
+                            <div>
+                                <span class="text-xs font-mono-numbers font-bold text-rose-300 bg-rose-500/20 px-2.5 py-1 rounded-md border border-rose-500/50 uppercase tracking-wider">
+                                    AI SAFETY INTERLOCK // PROTOKÓŁ POKA-YOKE
+                                </span>
+                                <h3 class="text-base font-bold text-white mt-1">Blokada Procedury Operacyjnej</h3>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-graphite-950 rounded-xl border border-rose-900 font-mono-numbers text-xs text-rose-200 leading-relaxed space-y-2">
+                            <p class="text-sm font-bold text-rose-300">„Przykro mi, Grzegorzu. Obawiam się, że nie mogę tego zrobić...</p>
+                            <p>Wykryłem próbę pominięcia inspekcji urobku na laserze BLM, a ten proces jest zbyt ważny, by ryzykować kolizję głowicy cięcia.”</p>
+                        </div>
+                        <div class="pt-2 text-xs text-rose-300 font-bold flex items-center gap-2">
+                            <i data-lucide="alert-octagon" class="w-4 h-4"></i> Autoryzacja wymuszona: Wpisz polecenie 'proszę sprawdź dane' w oknie powyżej.
+                        </div>
+                    </div>
+                `;
+                if (window.lucide) lucide.createIcons();
+            }, 1200);
+            return;
+        }
+
+        // Prawdziwe wywołanie modułu GeminiEngine (Online lub Edge)
+        const analysisResult = await GeminiEngine.analyzeIncident(incidentData, rawInput);
+
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="bot" class="w-4 h-4"></i> Generuj Kaskadę 5-Why (Gemini AI)`;
+        renderCapaCascadeResults(area, analysisResult, false);
 
-        if (isHalTrigger) {
-            isHalLocked = true;
-            setHalGlobalStatus();
-            area.innerHTML = `
-                <div class="p-6 rounded-2xl bg-gradient-to-br from-rose-950/80 via-graphite-950 to-graphite-950 border-[3px] border-rose-500 shadow-2xl space-y-4">
-                    <div class="flex items-center gap-4">
-                        <div class="w-14 h-14 rounded-full bg-rose-600 flex items-center justify-center hal-eye-glow flex-shrink-0 border-2 border-white">
-                            <div class="w-4 h-4 rounded-full bg-white"></div>
-                        </div>
-                        <div>
-                            <span class="text-xs font-mono-numbers font-bold text-rose-300 bg-rose-500/20 px-2.5 py-1 rounded-md border border-rose-500/50 uppercase tracking-wider">
-                                AI SAFETY INTERLOCK // PROTOKÓŁ POKA-YOKE
-                            </span>
-                            <h3 class="text-base font-bold text-white mt-1">Blokada Procedury Operacyjnej</h3>
-                        </div>
-                    </div>
-                    <div class="p-4 bg-graphite-950 rounded-xl border border-rose-900 font-mono-numbers text-xs text-rose-200 leading-relaxed space-y-2">
-                        <p class="text-sm font-bold text-rose-300">„Przykro mi, Grzegorzu. Obawiam się, że nie mogę tego zrobić...</p>
-                        <p>Wykryłem błąd ludzki w module podawania blachy na laserze BLM, a ten proces jest zbyt ważny, by ryzykować kolizję głowicy.”</p>
-                    </div>
-                    <div class="pt-2 text-xs text-rose-300 font-bold flex items-center gap-2">
-                        <i data-lucide="alert-octagon" class="w-4 h-4"></i> Autoryzacja wymuszona: Wpisz polecenie 'proszę sprawdź dane' w oknie powyżej.
-                    </div>
-                </div>
-            `;
-            if (window.lucide) lucide.createIcons();
-        } else {
-            executeNormalCapaFlow(area, btn, false, rawInput);
-        }
-    }, 2300);
+    } catch (err) {
+        console.error('[Capa] Błąd wykonania analizy:', err);
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="bot" class="w-4 h-4"></i> Generuj Kaskadę 5-Why (Gemini AI)`;
+        const fallbackResult = GeminiEngine.runLocalEdgeInference(incidentData, rawInput, true);
+        renderCapaCascadeResults(area, fallbackResult, false);
+    }
 }
 
-function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
+function renderCapaCascadeResults(area, res, afterHal) {
     area.innerHTML = `
         ${afterHal ? `
             <div class="p-3.5 bg-emerald-500/20 border-2 border-emerald-500/50 rounded-xl text-xs text-emerald-200 flex items-center justify-between font-medium">
@@ -636,9 +708,14 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
         ` : ''}
 
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-2 border-b border-graphite-750 gap-2">
-            <h4 class="text-xs font-extrabold text-gold-400 uppercase tracking-wider flex items-center gap-2">
-                <i data-lucide="git-commit" class="w-4 h-4"></i> Wygenerowana Kaskada Przyczynowa 5-Why:
-            </h4>
+            <div class="flex items-center gap-2">
+                <h4 class="text-xs font-extrabold text-gold-400 uppercase tracking-wider flex items-center gap-2">
+                    <i data-lucide="git-commit" class="w-4 h-4"></i> Wygenerowana Kaskada Przyczynowa 5-Why:
+                </h4>
+                <span class="text-[10px] font-mono-numbers bg-graphite-950 text-slate-300 border border-graphite-700 px-2 py-0.5 rounded">
+                    Źródło: ${res.source || 'AI Engine'}
+                </span>
+            </div>
             <button onclick="toggleOverrideMode()" id="btn-toggle-override" class="px-3.5 py-1.5 rounded-lg bg-graphite-850 hover:bg-graphite-800 text-slate-200 border border-graphite-600 text-xs font-bold transition flex items-center gap-1.5">
                 <i data-lucide="edit-3" class="w-3.5 h-3.5 text-gold-400"></i> Tryb Nadpisania (Manager Override)
             </button>
@@ -648,40 +725,36 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
             <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W1:</span>
                 <div class="flex-1">
-                    <p class="text-slate-200 font-bold">Dlaczego nastąpiło zatrzymanie maszyny?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Zadziałał czujnik przeciążenia napędu stołu odbiorczego urobku.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-200 font-bold focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>${res.w1}</textarea>
                 </div>
             </div>
 
             <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W2:</span>
                 <div class="flex-1">
-                    <p class="text-slate-200 font-bold">Dlaczego stół uległ mechanicznemu przeciążeniu?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Ażur z blachy zakleszczył się między rusztem a trawersą wygarniacza.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-200 font-bold focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>${res.w2}</textarea>
                 </div>
             </div>
 
             <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W3:</span>
                 <div class="flex-1">
-                    <p class="text-slate-200 font-bold">Dlaczego ażur uległ zakleszczeniu w rusztach?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Wzmocnienia naroży opadły pod kątem z powodu braku mikromostków i naprężeń w arkuszu.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-200 font-bold focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>${res.w3}</textarea>
                 </div>
             </div>
 
             <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs flex gap-3.5">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-sm">W4:</span>
                 <div class="flex-1">
-                    <p class="text-slate-200 font-bold">Dlaczego pominięto mikromostki w nestingach?</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-300 mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Operator CAM dążył do wyeliminowania ręcznego wybijania detali młotkiem na rozładunku.</textarea>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-200 font-bold focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>${res.w4}</textarea>
                 </div>
             </div>
 
             <div class="p-4 rounded-xl bg-graphite-950 border-2 border-gold-500/60 text-xs flex gap-3.5 bg-gold-500/10">
                 <span class="font-mono-numbers font-extrabold text-gold-400 flex-shrink-0 text-base">W5:</span>
                 <div class="flex-1">
-                    <p class="text-gold-300 font-extrabold">Przyczyna Źródłowa (Root Cause):</p>
-                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-100 font-medium mt-0.5 focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>Brak ustandaryzowanego SOP określającego minimalną sztywność ażuru przy cięciu arkuszy o grubości powyżej 6.0 mm.</textarea>
+                    <span class="text-gold-300 font-extrabold block mb-0.5">Przyczyna Źródłowa (Root Cause):</span>
+                    <textarea class="why-node-input w-full bg-transparent border-0 text-slate-100 font-bold focus:bg-graphite-900 focus:border focus:border-gold-500 rounded p-1" readonly>${res.w5}</textarea>
                 </div>
             </div>
         </div>
@@ -693,14 +766,14 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
                     <i data-lucide="shield-check" class="w-5 h-5"></i> Zadanie Korygująco-Zapobiegawcze (CAPA):
                 </div>
                 <span id="capa-decision-origin" class="text-[10px] font-mono-numbers font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40">
-                    Propozycja Gemini 2.5
+                    Rekomendacja: ${res.source || 'AI Engine'}
                 </span>
             </div>
             
-            <textarea id="capa-task-text" rows="2" class="w-full bg-graphite-900 border border-graphite-700 rounded-xl p-3 text-xs text-white leading-relaxed focus:outline-none focus:border-emerald-500 font-sans" readonly>Wdrożenie obowiązkowych mikromostków 0.8 mm w oprogramowaniu CAM dla blach &ge; 6 mm oraz standaryzacja wózka buforowego na ażury przy stole rozładunku.</textarea>
+            <textarea id="capa-task-text" rows="2" class="w-full bg-graphite-900 border border-graphite-700 rounded-xl p-3 text-xs text-white leading-relaxed focus:outline-none focus:border-emerald-500 font-sans" readonly>${res.capa}</textarea>
 
             <div class="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                <span class="text-slate-300">Wykonawca: <strong class="text-white">Główny Technolog / Utrzymanie Ruchu</strong></span>
+                <span class="text-slate-300">Wskazany wykonawca: <strong class="text-white">${res.owner || 'Główny Technolog / UR'}</strong></span>
                 <div class="flex items-center gap-2 w-full sm:w-auto">
                     <button onclick="clearAndOverrideCapa()" id="btn-manual-wipe" class="hidden px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 rounded-xl font-bold transition text-xs">
                         Wyczyść i Wpisz Własną Decyzję
@@ -715,7 +788,16 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
     if (window.lucide) lucide.createIcons();
 }
 
-// 11. Manager Override & Zatwierdzenie Zadania CAPA (Rotacja Wąskiego Gardła)
+function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
+    const fallback = GeminiEngine.runLocalEdgeInference({
+        machineName: "Laser BLM Płytowy",
+        faultCode: "BLM_JAM",
+        durationMin: 51
+    }, humanNote);
+    renderCapaCascadeResults(area, fallback, afterHal);
+}
+
+// 12. Manager Override & Zatwierdzenie Zadania CAPA
 let isOverrideActive = false;
 
 function toggleOverrideMode() {
@@ -796,7 +878,7 @@ function confirmCapaDecision() {
     switchTab('dashboard');
 }
 
-// 12. Modal Historii Wdrożonych Zadań CAPA
+// 13. Modal Historii Wdrożonych Zadań CAPA
 function toggleCapaHistoryModal() {
     const modal = document.getElementById('capa-history-modal');
     if (!modal) return;
@@ -840,23 +922,14 @@ function renderCapaHistoryList() {
 
 function setHalGlobalStatus() {
     const statusBox = document.getElementById('ai-global-status');
-    if (statusBox) statusBox.className = "hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-rose-500/20 border-2 border-rose-500 text-rose-300 text-xs font-mono-numbers font-bold";
+    if (statusBox) statusBox.className = "flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rose-500/20 border-2 border-rose-500 text-rose-300 text-xs font-mono-numbers font-bold";
     const dot = document.getElementById('ai-status-dot');
     if (dot) dot.className = "w-3 h-3 rounded-full bg-rose-500 hal-eye-glow";
     const text = document.getElementById('ai-status-text');
     if (text) text.innerText = "HAL Core: Interlock";
 }
 
-function restoreGlobalAiStatus() {
-    const statusBox = document.getElementById('ai-global-status');
-    if (statusBox) statusBox.className = "hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 text-xs font-mono-numbers font-bold shadow-sm";
-    const dot = document.getElementById('ai-status-dot');
-    if (dot) dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
-    const text = document.getElementById('ai-status-text');
-    if (text) text.innerText = "Gemini 2.5: Aktywny";
-}
-
-// 13. Tabela Parku Maszynowego i Modale
+// 14. Tabela Parku Maszynowego i Modale
 function renderMachines() {
     const container = document.getElementById('machines-container');
     if (!container) return;
@@ -989,7 +1062,7 @@ function jumpToCapaFromModal() {
     }
 }
 
-// 14. Audyt 5S i Symulator What-If
+// 15. Audyt 5S i Symulator What-If
 const stationAudits = {
     ws_weld: {
         title: "Spawanie Manualne MIG/MAG (Stanowisko S-02)",
