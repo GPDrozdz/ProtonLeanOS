@@ -1,33 +1,33 @@
 /**
- * Proton Lean OS - Executive Dashboard Logic (v3.5 Complete Multi-Station 5S Vision)
+ * Proton Lean OS - Executive Dashboard Logic (v3.6 Complete Multi-Station 5S Vision)
  * Pełna integracja: MQTT over WebSocket, Dual-Core Gemini Engine, rotacja wąskiego gardła,
- * dynamiczny rejestr stanowisk 5S z historią audytów LPA oraz trwałość w localStorage.
+ * dynamiczny rejestr 8 stanowisk fabrycznych z bogatą historią audytów LPA i trwałością w localStorage.
  */
 
 const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v26';
 const STORAGE_KEY_CAPA = 'proton_lean_capa_history_v26';
 const STORAGE_KEY_PROD = 'proton_lean_prod_state_v26';
-const STORAGE_KEY_5S_STATIONS = 'proton_5s_stations_v1';
-const STORAGE_KEY_5S_AUDITS = 'proton_5s_audits_v1';
+const STORAGE_KEY_5S_STATIONS = 'proton_5s_stations_v2';
+const STORAGE_KEY_5S_AUDITS = 'proton_5s_audits_v2';
 
 let machineFleet = [];
 let showAllMachines = false;
 let activeModalMachineId = 0;
 let isHalLocked = false;
 
-// Rejestry w pamięci
+// Rejestry zdarzeń
 let incomingEventsQueue = [];
 let capaHistory = [];
 let activeIncidentContext = null;
 
-// Zmienne modułu 5S Vision
+// Moduł 5S Vision
 let visionStations = [];
 let visionAuditsHistory = [];
 let activeVisionStationId = 'ws_weld';
 let currentUploadedVisionBase64 = null;
 let activeVisionSubTab = 'current';
 
-// Domyślny stan początkowy produkcji (20 palet, 5 kontenerów, 18.0 Mg)
+// Domyślny stan początkowy produkcji
 const INITIAL_PROD_STATE = {
     palletsDone: 20,
     palletsTarget: 100,
@@ -43,7 +43,7 @@ const INITIAL_PROD_STATE = {
 
 let productionState = { ...INITIAL_PROD_STATE };
 
-// Domyślna hierarchia strat maszynowych do automatycznej rotacji wąskiego gardła
+// Domyślna rotacja wąskiego gardła
 const DEFAULT_BOTTLENECK_FLEET = [
     {
         id: 0,
@@ -95,16 +95,140 @@ const DEFAULT_BOTTLENECK_FLEET = [
     }
 ];
 
-// Domyślne stanowiska fabryczne dla modułu 5S Vision
-const DEFAULT_5S_STATIONS = [
-    { id: 'ws_weld', name: "Spawanie Manualne MIG/MAG", code: "S-02", area: "Spawalnia PK1" },
-    { id: 'ws_laser', name: "Laser BLM Płytowy CNC", code: "L-01", area: "Hala Cięcia PK1" },
+// Predefiniowane stanowiska fabryczne 5S
+const SEED_5S_STATIONS = [
+    { id: 'ws_weld', name: "Spawanie Manualne MIG/MAG", code: "S-02", area: "Spawalnia Główna PK1" },
+    { id: 'ws_laser', name: "Laser BLM Płytowy CNC", code: "L-01", area: "Wydział Cięcia PK1" },
     { id: 'ws_saw', name: "Piła Tarczowa do Metalu", code: "P-01", area: "Przygotowanie PK2" },
     { id: 'ws_bender', name: "Giętarka do Rur CNC", code: "G-01", area: "Giętarnia PK2" },
-    { id: 'ws_final', name: "Montaż Końcowy Kontenerów", code: "M-01", area: "Montaż Końcowy" }
+    { id: 'ws_final', name: "Montaż Końcowy Kontenerów", code: "M-01", area: "Montaż Końcowy" },
+    { id: 'ws_robot', name: "Zrobotyzowana Cela Spawalnicza", code: "R-01", area: "Spawalnia PK1" },
+    { id: 'ws_shot', name: "Śrutownia Komorowa Detali", code: "K-02", area: "Przygotowanie Powierzchni" },
+    { id: 'ws_paint', name: "Stanowisko Malowania Proszkowego", code: "P-03", area: "Lakiernia PK2" }
 ];
 
-// 1. Inicjalizacja i odczyt pamięci trwałej
+// Predefiniowana bogata historia audytów 5S
+const SEED_5S_AUDITS = [
+    {
+        stationId: 'ws_weld',
+        timestamp: "2026-10-28 07:45",
+        score: "3.92",
+        s1: "4.10", s2: "3.50", s3: "4.20", s4: "4.00", s5: "3.80",
+        observations: [
+            { text: "Nieodłożony uchwyt spawalniczy na wieszak magnetyczny", pen: "-0.40 pkt (2S)" },
+            { text: "Czysta strefa odkładcza i kompletne atesty drutu", pen: "+ Wzorcowo (4S)" }
+        ],
+        capa: "Wdrożenie magnetycznego wieszaka palnika spawalniczego w zasięgu dłoni.",
+        source: "Gemini Vision (Audyt Cykliczny)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_weld',
+        timestamp: "2026-10-21 14:15",
+        score: "3.60",
+        s1: "3.80", s2: "3.20", s3: "3.90", s4: "3.70", s5: "3.40",
+        observations: [
+            { text: "Zalegające odpryski w strefie mocowania ramy", pen: "-0.50 pkt (3S)" },
+            { text: "Splątane przewody masy na ciągu pieszym", pen: "-0.40 pkt (BHP/2S)" }
+        ],
+        capa: "Zamontowanie podwieszanego wysięgnika przewodów zasilających.",
+        source: "Audyt Wstępny (Benchmark)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_laser',
+        timestamp: "2026-10-27 10:20",
+        score: "3.45",
+        s1: "2.90", s2: "3.60", s3: "3.80", s4: "3.70", s5: "3.25",
+        observations: [
+            { text: "Ażury po cięciu wystają poza żółtą linię buforową", pen: "-0.65 pkt (1S/2S)" },
+            { text: "Prowadnice i stół wymienny po inspekcji TPM", pen: "+ Wzorcowo (3S)" }
+        ],
+        capa: "Zwiększenie gabarytu kosza złomowego i odmalowanie linii strefy urobku.",
+        source: "Gemini Vision (Kamera L-01)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_saw',
+        timestamp: "2026-10-26 12:00",
+        score: "4.45",
+        s1: "4.60", s2: "4.30", s3: "4.80", s4: "4.40", s5: "4.15",
+        observations: [
+            { text: "Czysta taca wiórowa, brak rozlanego chłodziwa", pen: "+ Wzorcowo (3S)" },
+            { text: "Wyszczerbiona tarcza bez czerwonej zawieszki kwarantanny", pen: "-0.20 pkt (1S)" }
+        ],
+        capa: "Uzupełnienie czerwonych zawieszek dla narzędzi przeznaczonych do regeneracji.",
+        source: "Gemini Vision (Inspekcja)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_bender',
+        timestamp: "2026-10-25 15:30",
+        score: "4.68",
+        s1: "4.80", s2: "4.70", s3: "4.90", s4: "4.50", s5: "4.50",
+        observations: [
+            { text: "Tablica cieni matryc kompletna w 100%", pen: "+ Wzorcowo (2S)" },
+            { text: "Brak wycieków hydraulicznych, agregat odtłuszczony", pen: "+ Wzorcowo (3S)" }
+        ],
+        capa: "Utrzymanie standardu – stanowisko benchmarkowe dla fabryki.",
+        source: "Gemini Vision (Benchmark)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_final',
+        timestamp: "2026-10-24 09:40",
+        score: "4.25",
+        s1: "4.30", s2: "4.10", s3: "4.40", s4: "4.25", s5: "4.20",
+        observations: [
+            { text: "Klucze dynamometryczne posiadają aktualną naklejkę kalibracji", pen: "+ Wzorcowo (4S)" },
+            { text: "Pudełka z zamkami stoją na posadzce zamiast regale rolkowym", pen: "-0.30 pkt (2S)" }
+        ],
+        capa: "Wdrożenie grawitacyjnego stojaka FIFO na drobne okucia.",
+        source: "Gemini Vision (Audyt Zmianowy)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_robot',
+        timestamp: "2026-10-27 16:10",
+        score: "4.55",
+        s1: "4.60", s2: "4.60", s3: "4.70", s4: "4.50", s5: "4.35",
+        observations: [
+            { text: "Kurtyny optyczne i wygrodzenia BHP idealnie czyste", pen: "+ Wzorcowo (BHP/3S)" },
+            { text: "Zapasowe końcówki prądowe nieoznaczone na stanowisku", pen: "-0.25 pkt (4S)" }
+        ],
+        capa: "Opisanie szuflad narzędziowych zgodnie ze standardem 5S Poka-Yoke.",
+        source: "Gemini Vision (Cela Robot)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_shot',
+        timestamp: "2026-10-23 11:25",
+        score: "3.30",
+        s1: "3.50", s2: "3.10", s3: "3.00", s4: "3.60", s5: "3.30",
+        observations: [
+            { text: "Wysypany śrut stalowy na przejściu przed komorą", pen: "-0.70 pkt (BHP/3S)" },
+            { text: "Kombinezony i maski odłożone na dedykowane haki", pen: "+ Wzorcowo (2S)" }
+        ],
+        capa: "Montaż gumowej listwy uszczelniającej próg wrót śrutownicy.",
+        source: "Audyt Wstępny (LPA)",
+        imageBase64: null
+    },
+    {
+        stationId: 'ws_paint',
+        timestamp: "2026-10-28 08:50",
+        score: "4.15",
+        s1: "4.20", s2: "4.00", s3: "4.40", s4: "4.10", s5: "4.05",
+        observations: [
+            { text: "Zawieszki malarskie po wypalaniu posortowane wg typoszeregu", pen: "+ Wzorcowo (1S)" },
+            { text: "Brak piktogramu uziemienia przy stojaku trawers", pen: "-0.30 pkt (4S)" }
+        ],
+        capa: "Oznakowanie punktu kontroli ciągłości uziemienia trawersy.",
+        source: "Gemini Vision (Audyt Zmiany I)",
+        imageBase64: null
+    }
+];
+
+// 1. Inicjalizacja Dashboardu
 async function initDashboard() {
     loadPersistentStorage();
 
@@ -114,7 +238,7 @@ async function initDashboard() {
             machineFleet = await res.json();
         }
     } catch (e) {
-        console.warn('[Dashboard] Fetch lokalny pominięty, ładuję dane bazowe.', e);
+        console.warn('[Dashboard] Fetch lokalny pominięty, dane bazowe załadowane.', e);
     }
 
     renderMachines();
@@ -124,20 +248,21 @@ async function initDashboard() {
     recalculateBottleneckWidget();
     startBackgroundProductionTicker();
     updateAiStatusBadge();
+    
+    // Inicjalizacja modułu 5S Vision
     init5SVisionModule();
 
-    // 3-sekundowa animacja pierścieni HUD
+    // Animacja wykresów HUD
     animateHudRingsOnStartup();
 
     if (window.lucide) lucide.createIcons();
 
-    // Rejestracja szyny zdarzeń telemetrycznych MQTT
     if (typeof subscribeTelemetryEvents === 'function') {
         subscribeTelemetryEvents(handleIncomingTelemetry);
     }
 }
 
-// 2. 3-sekundowa Animacja Startowa Wykresów Pierścieniowych HUD
+// 2. Animacja Pierścieni HUD
 function animateHudRingsOnStartup() {
     setTimeout(() => {
         const ringA = document.getElementById('oee-ring-a');
@@ -162,7 +287,7 @@ function animateHudRingsOnStartup() {
     }, 100);
 }
 
-// 3. Obsługa localStorage (Trwałość danych)
+// 3. Obsługa localStorage
 function loadPersistentStorage() {
     try {
         const storedQueue = localStorage.getItem(STORAGE_KEY_QUEUE);
@@ -193,18 +318,17 @@ function savePersistentStorage() {
 }
 
 function resetFactorySimulationState() {
-    if (confirm("Czy na pewno chcesz zresetować symulację fabryki do stanu początkowego?\n(Spowoduje to wyczyszczenie kolejki, historii CAPA oraz reset produkcji do 20 palet).")) {
+    if (confirm("Czy na pewno chcesz zresetować symulację fabryki do stanu początkowego?\n(Spowoduje to wyczyszczenie kolejki, historii CAPA, zresetowanie produkcji i przywrócenie bazy 5S).")) {
         localStorage.removeItem(STORAGE_KEY_QUEUE);
         localStorage.removeItem(STORAGE_KEY_CAPA);
         localStorage.removeItem(STORAGE_KEY_PROD);
-        incomingEventsQueue = [];
-        capaHistory = [];
-        productionState = { ...INITIAL_PROD_STATE };
+        localStorage.removeItem(STORAGE_KEY_5S_STATIONS);
+        localStorage.removeItem(STORAGE_KEY_5S_AUDITS);
         location.reload();
     }
 }
 
-// 4. Automatyczny Takt Produkcji w tle
+// 4. Takt Produkcji w tle
 function startBackgroundProductionTicker() {
     setInterval(() => {
         if (productionState.palletsDone < productionState.palletsTarget) {
@@ -216,7 +340,7 @@ function startBackgroundProductionTicker() {
     }, 30000);
 }
 
-// 5. Odbiór meldunku z magistrali MQTT / LocalStorage
+// 5. Odbiór meldunku z magistrali MQTT
 function handleIncomingTelemetry(payload) {
     if (!payload) return;
 
@@ -248,7 +372,6 @@ function handleIncomingTelemetry(payload) {
     showToastNotification(payload);
 }
 
-// 6. Przeliczanie wskaźników wykonania planu
 function recalculateProductionImpact(payload) {
     const mins = payload.durationMin || 10;
     productionState.totalLossPLN += payload.costTotalPLN;
@@ -323,7 +446,7 @@ function updateProductionMetricsUI() {
     if (paretoTotal) paretoTotal.innerText = `Suma: ${productionState.totalDowntimeMin} min strat`;
 }
 
-// 7. Rotacja Krytycznego Wąskiego Gardła (Dynamic Bottleneck Shifting)
+// 6. Rotacja Wąskiego Gardła
 function recalculateBottleneckWidget() {
     const resolvedMachineIds = capaHistory.map(c => c.machineId);
     const pendingEvents = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS" && !resolvedMachineIds.includes(ev.machineId));
@@ -442,7 +565,7 @@ function analyzeActiveBottleneckInCapa() {
     document.getElementById('capa-human-input').value = `Sztab kryzysowy: Weryfikacja gniazda ${nameEl}.`;
 }
 
-// 8. Kolejka Push-Pull Drawer
+// 7. Szuflada Powiadomień
 function toggleNotificationDrawer() {
     const drawer = document.getElementById('notification-drawer');
     if (!drawer) return;
@@ -515,7 +638,6 @@ function clearEventBuffer() {
     recalculateBottleneckWidget();
 }
 
-// 9. Pobranie zdarzenia do Sztabu 5-Why
 function pullLatestEventToCapa() {
     const pending = incomingEventsQueue.filter(ev => ev.status === "PENDING_ANALYSIS");
     if (pending.length === 0) {
@@ -540,7 +662,7 @@ function pullSpecificEventToCapa(index) {
     document.getElementById('capa-human-input').value = `[Zgłoszenie ${ev.source} / ${ev.operatorName}]: ${ev.operatorNote}`;
 }
 
-// 10. Zarządzanie Kluczem Gemini API (Dyskretny Modal)
+// 8. Zarządzanie Kluczem Gemini API
 function openApiKeyModal() {
     const modal = document.getElementById('api-key-modal');
     const input = document.getElementById('gemini-api-key-input');
@@ -597,7 +719,7 @@ function updateAiStatusBadge() {
     }
 }
 
-// 11. Sztab Decyzyjny 5-Why, Gemini Dual-Engine & Manager Override
+// 9. Sztab Decyzyjny 5-Why
 function injectPresetPrompt(type) {
     const input = document.getElementById('capa-human-input');
     if (!input) return;
@@ -614,7 +736,6 @@ async function triggerCapaAnalysis() {
     const area = document.getElementById('capa-result-area');
     const btn = document.getElementById('btn-run-capa');
 
-    // AI Safety Interlock check
     if (isHalLocked) {
         if (inputLower.includes('sprawdz dane') || inputLower.includes('sprawdź dane')) {
             isHalLocked = false;
@@ -776,7 +897,6 @@ function renderCapaCascadeResults(area, res, afterHal) {
             </div>
         </div>
 
-        <!-- Zadanie CAPA -->
         <div class="p-5 rounded-2xl bg-graphite-950 border-2 border-emerald-500/50 space-y-3">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2 text-emerald-400 text-xs font-extrabold uppercase">
@@ -814,7 +934,6 @@ function executeNormalCapaFlow(area, btn, afterHal, humanNote) {
     renderCapaCascadeResults(area, fallback, afterHal);
 }
 
-// 12. Manager Override & Zatwierdzenie Zadania CAPA
 let isOverrideActive = false;
 
 function toggleOverrideMode() {
@@ -849,7 +968,7 @@ function clearAndOverrideCapa() {
     const taskInput = document.getElementById('capa-task-text');
     if (taskInput) {
         taskInput.value = "";
-        taskInput.placeholder = "Wpisz bezpośrednią decyzję inżynierską (np. Natychmiastowa wymiana łożyska ślizgowego przez UR)...";
+        taskInput.placeholder = "Wpisz bezpośrednią decyzję inżynierską...";
         taskInput.focus();
     }
 }
@@ -895,7 +1014,6 @@ function confirmCapaDecision() {
     switchTab('dashboard');
 }
 
-// 13. Modal Historii Wdrożonych Zadań CAPA
 function toggleCapaHistoryModal() {
     const modal = document.getElementById('capa-history-modal');
     if (!modal) return;
@@ -946,7 +1064,7 @@ function setHalGlobalStatus() {
     if (text) text.innerText = "HAL Core: Interlock";
 }
 
-// 14. Tabela Parku Maszynowego i Modale
+// 10. Tabela Maszyn
 function renderMachines() {
     const container = document.getElementById('machines-container');
     if (!container) return;
@@ -1017,7 +1135,10 @@ function switchTab(tabId) {
         activeBtn.className = "nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 shadow-md transition";
     }
 
-    if (tabId === 'audit5s') renderVisionActiveView();
+    if (tabId === 'audit5s') {
+        renderVisionStationsDropdown();
+        renderVisionActiveView();
+    }
 }
 
 function setShift(shift) {
@@ -1080,40 +1201,31 @@ function jumpToCapaFromModal() {
 }
 
 // =========================================================================
-// 15. MODUŁ 5S VISION (DYNAMIC STATIONS, MULTIMODAL INFERENCE & AUDIT TRAIL)
+// 11. MODUŁ 5S VISION (KOMPLETNA BAZA STANOWISK & ŚLAD AUDYTOWY)
 // =========================================================================
 
 function init5SVisionModule() {
     try {
         const storedStations = localStorage.getItem(STORAGE_KEY_5S_STATIONS);
-        visionStations = storedStations ? JSON.parse(storedStations) : [...DEFAULT_5S_STATIONS];
+        visionStations = (storedStations && JSON.parse(storedStations).length > 0)
+            ? JSON.parse(storedStations)
+            : [...SEED_5S_STATIONS];
 
         const storedAudits = localStorage.getItem(STORAGE_KEY_5S_AUDITS);
-        visionAuditsHistory = storedAudits ? JSON.parse(storedAudits) : [];
-        
-        // Inicjalizacja bazowych wpisów historycznych dla stanowisk fabrycznych
-        if (visionAuditsHistory.length === 0) {
-            visionStations.forEach(st => {
-                visionAuditsHistory.push({
-                    stationId: st.id,
-                    timestamp: "2026-10-28 07:45",
-                    score: "3.92",
-                    s1: "4.10", s2: "3.50", s3: "4.20", s4: "4.00", s5: "3.80",
-                    observations: [
-                        { text: "Nieodłożony uchwyt narzędziowy na wieszak", pen: "-0.40 pkt (2S)" },
-                        { text: "Posadzka i pole odkładcze czyste", pen: "+ Wzorcowo (3S)" }
-                    ],
-                    capa: "Wdrożenie dedykowanego wieszaka magnetycznego w strefie operatora.",
-                    source: "Audyt Wstępny (Benchmark)",
-                    imageBase64: null
-                });
-            });
-            saveVisionAuditsStorage();
-        }
+        visionAuditsHistory = (storedAudits && JSON.parse(storedAudits).length > 0)
+            ? JSON.parse(storedAudits)
+            : [...SEED_5S_AUDITS];
+
+        saveVisionStationsStorage();
+        saveVisionAuditsStorage();
     } catch (e) {
         console.error('[5S Vision] Błąd odczytu storage:', e);
-        visionStations = [...DEFAULT_5S_STATIONS];
-        visionAuditsHistory = [];
+        visionStations = [...SEED_5S_STATIONS];
+        visionAuditsHistory = [...SEED_5S_AUDITS];
+    }
+
+    if (!activeVisionStationId || !visionStations.find(s => s.id === activeVisionStationId)) {
+        activeVisionStationId = visionStations[0].id;
     }
 
     renderVisionStationsDropdown();
@@ -1191,6 +1303,7 @@ function renderVisionCurrentTab() {
 
     const currentStation = visionStations.find(s => s.id === activeVisionStationId) || visionStations[0];
     const stationAudits = visionAuditsHistory.filter(a => a.stationId === activeVisionStationId);
+    
     const latestAudit = stationAudits[0] || {
         score: "4.00", s1: "4.00", s2: "4.00", s3: "4.00", s4: "4.00", s5: "4.00",
         observations: [{ text: "Oczekiwanie na pierwszy audyt fotograficzny", pen: "+ Gotowość" }],
@@ -1252,7 +1365,7 @@ function renderVisionCurrentTab() {
                         <i data-lucide="eye" class="w-4 h-4 text-gold-400"></i> Kadr Obrazu Stanowiska
                     </span>
                     <span class="text-xs font-mono-numbers text-slate-300 bg-graphite-900 px-2.5 py-1 rounded-md border border-graphite-750">
-                        ${displayImage ? 'Fotografia z Inspekcji' : 'Kamera Przemysłowa RTSP'}
+                        ${displayImage ? (currentUploadedVisionBase64 ? 'Nowe Zdjęcie (Do Audytu)' : 'Fotografia z Rejestru') : 'Kamera Przemysłowa RTSP'}
                     </span>
                 </div>
 
@@ -1263,8 +1376,8 @@ function renderVisionCurrentTab() {
                         <div class="absolute inset-0 bg-[radial-gradient(#324055_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
                         <div class="border-2 border-amber-400 bg-amber-500/15 p-3 rounded-xl text-xs text-amber-200 max-w-sm z-10 shadow-xl text-center backdrop-blur-md">
                             <i data-lucide="scan-line" class="w-6 h-6 mx-auto mb-1 text-amber-400"></i>
-                            <strong>Widok Domyślny Gniazda</strong><br>
-                            Wgraj zdjęcie ze smartfona lub wybierz kadr, aby uruchomić silnik multimodalny.
+                            <strong>Wzorzec Stanowiska</strong><br>
+                            Wgraj nowe zdjęcie, aby natychmiast przypisać kadr do tego gniazda.
                         </div>
                     `}
                 </div>
@@ -1280,7 +1393,11 @@ function renderVisionCurrentTab() {
             </div>
 
             <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between">
-                <span class="text-xs text-slate-400">Każda inspekcja tworzy trwały wpis w historii LPA.</span>
+                ${currentUploadedVisionBase64 ? `
+                    <span class="text-xs text-amber-300 font-bold flex items-center gap-1.5 animate-pulse">
+                        <i data-lucide="alert-circle" class="w-4 h-4"></i> Załadowano nowe zdjęcie – kliknij „Uruchom Inspekcję”
+                    </span>
+                ` : `<span class="text-xs text-slate-400">Każda inspekcja tworzy trwały wpis w historii LPA.</span>`}
                 <button onclick="alert('Raport PDF bieżącego stanowiska został wygenerowany.')" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-100 border border-graphite-600 rounded-xl transition flex items-center gap-2">
                     <i data-lucide="download" class="w-4 h-4 text-gold-400"></i> Eksportuj Raport Stanowiska (PDF)
                 </button>
@@ -1344,7 +1461,7 @@ function renderVisionHistoryTab() {
 
             <div class="pt-2 border-t border-graphite-750 text-xs text-emerald-300 flex items-center justify-between">
                 <span><strong>Zadanie CAPA:</strong> ${a.capa}</span>
-                ${a.imageBase64 ? `<span class="text-[10px] text-gold-400 font-bold flex items-center gap-1"><i data-lucide="image" class="w-3.5 h-3.5"></i> Załączono kadr</span>` : ''}
+                ${a.imageBase64 ? `<span class="text-[10px] text-gold-400 font-bold flex items-center gap-1"><i data-lucide="image" class="w-3.5 h-3.5"></i> Zdjęcie zarchiwizowane</span>` : ''}
             </div>
         </div>
     `).join('');
@@ -1384,12 +1501,10 @@ async function executeLiveVisionAudit() {
         if (currentUploadedVisionBase64 && window.GeminiEngine && GeminiEngine.hasActiveApiKey()) {
             auditResult = await GeminiEngine.analyzeVisual5S(currentUploadedVisionBase64, station, humanNote);
         } else {
-            // Silnik deterministyczny Edge Offline
             await new Promise(r => setTimeout(r, 1200));
             auditResult = GeminiEngine.generateDeterministicVisionReport(station, humanNote);
         }
 
-        // Zapis do historii stanowiska w localStorage
         const newRecord = {
             ...auditResult,
             stationId: station.id,
@@ -1399,10 +1514,15 @@ async function executeLiveVisionAudit() {
 
         visionAuditsHistory.unshift(newRecord);
         saveVisionAuditsStorage();
-        alert(`Inspekcja 5S Vision dla ${station.name} zakończona pomyślnie. Wynik dodano do historii.`);
+        currentUploadedVisionBase64 = null;
+        
+        const label = document.getElementById('vision-upload-label');
+        if (label) label.innerText = "Wgraj Zdjęcie";
+
+        alert(`Inspekcja 5S Vision dla ${station.name} zakończona pomyślnie. Wynik zapisano w historii.`);
 
     } catch (err) {
-        console.error('[5S Vision] Błąd krytyczny audytu:', err);
+        console.error('[5S Vision] Błąd audytu:', err);
         alert("Błąd połączenia z API wizyjnym. Zastosowano procedurę awaryjną Edge.");
     } finally {
         btn.disabled = false;
@@ -1425,32 +1545,66 @@ function saveNewStation() {
     const nameInput = document.getElementById('new-station-name');
     const codeInput = document.getElementById('new-station-code');
     const areaInput = document.getElementById('new-station-area');
+    const photoInput = document.getElementById('new-station-photo');
 
     if (!nameInput || !nameInput.value.trim()) {
         alert("Podaj nazwę stanowiska.");
         return;
     }
 
+    const newStationId = 'ws_' + Date.now().toString(36);
     const newStation = {
-        id: 'ws_' + Date.now().toString(36),
+        id: newStationId,
         name: nameInput.value.trim(),
         code: (codeInput && codeInput.value.trim()) ? codeInput.value.trim().toUpperCase() : 'ST-' + Math.floor(Math.random()*90 + 10),
         area: (areaInput && areaInput.value.trim()) ? areaInput.value.trim() : 'Obszar Główny'
     };
 
-    visionStations.push(newStation);
-    saveVisionStationsStorage();
+    const processPhotoAndSave = (base64Photo) => {
+        visionStations.push(newStation);
+        saveVisionStationsStorage();
 
-    activeVisionStationId = newStation.id;
-    renderVisionStationsDropdown();
-    closeNewStationModal();
-    nameInput.value = '';
+        if (base64Photo) {
+            visionAuditsHistory.unshift({
+                stationId: newStation.id,
+                timestamp: new Date().toLocaleDateString('pl-PL') + ' ' + new Date().toLocaleTimeString('pl-PL').slice(0, 5),
+                score: "4.00",
+                s1: "4.00", s2: "4.00", s3: "4.00", s4: "4.00", s5: "4.00",
+                observations: [
+                    { text: "Stanowisko zarejestrowane z fotografią bazową", pen: "+ Benchmark" }
+                ],
+                capa: "Uruchomienie pierwszej inspekcji Gemini Vision.",
+                source: "Karta Rejestracyjna",
+                imageBase64: base64Photo
+            });
+            saveVisionAuditsStorage();
+        }
 
-    renderVisionActiveView();
-    alert(`Stanowisko ${newStation.name} (${newStation.code}) zostało pomyślnie utworzone.`);
+        activeVisionStationId = newStation.id;
+        renderVisionStationsDropdown();
+        closeNewStationModal();
+
+        nameInput.value = '';
+        if (codeInput) codeInput.value = '';
+        if (areaInput) areaInput.value = '';
+        if (photoInput) photoInput.value = '';
+
+        renderVisionActiveView();
+        alert(`Stanowisko ${newStation.name} (${newStation.code}) zostało pomyślnie dodane.`);
+    };
+
+    if (photoInput && photoInput.files && photoInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            processPhotoAndSave(e.target.result);
+        };
+        reader.readAsDataURL(photoInput.files[0]);
+    } else {
+        processPhotoAndSave(null);
+    }
 }
 
-// 16. Symulator What-If
+// 12. Symulator What-If
 function updateWhatIf() {
     const s1 = document.getElementById('slider-1').value;
     const s2 = document.getElementById('slider-2').value;
@@ -1468,7 +1622,7 @@ function updateWhatIf() {
     `;
 }
 
-// 17. Powiadomienia TOAST w czasie rzeczywistym
+// 13. TOAST
 function showToastNotification(payload) {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -1503,5 +1657,4 @@ function showToastNotification(payload) {
     }, 6000);
 }
 
-// Inicjalizacja skryptu po załadowaniu DOM
 window.addEventListener('DOMContentLoaded', initDashboard);
