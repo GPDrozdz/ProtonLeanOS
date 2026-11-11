@@ -1,10 +1,12 @@
 /**
- * Proton Lean OS - Gemini Causal & Vision Engine (v3.4 Multi-Station 5S)
- * Obsługa wnioskowania 5-Why oraz prawdziwej multimodalnej inspekcji obrazu 5S Vision.
+ * Proton Lean OS - Gemini Causal & Vision Engine (v3.8 Production Hardened)
+ * Model bazowy: gemini-3.8-flash z natywnym wymuszeniem application/json
+ * Pełna odporność na błędy 503 / 429 oraz ucięte stringi JSON.
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
-const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+// gemini-3.8-flash zapewnia stabilniejszą przepustowość dla zapytań multimodalnych
+const GEMINI_MODEL = 'gemini-3.8-flash';
 const GEMINI_API_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const GeminiEngine = {
@@ -33,7 +35,7 @@ const GeminiEngine = {
             try {
                 return await this.fetchGeminiCloudAnalysis(incidentContext, humanNote);
             } catch (err) {
-                console.error('[GeminiEngine] Błąd 5-Why chmury. Fallback do Edge:', err);
+                console.warn('[GeminiEngine] Błąd 5-Why w chmurze. Przełączono na lokalny Edge Fallback:', err);
                 return this.runLocalEdgeInference(incidentContext, humanNote, true);
             }
         } else {
@@ -53,7 +55,7 @@ Czas trwania: ${incident.durationMin || 30} min (Koszt: ${incident.costTotalPLN 
 Notatka inżynierska z Gemba: "${humanNote || 'Brak dodatkowych uwag'}"
 
 Wymagania:
-Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown:
+Zwróć czysty obiekt JSON:
 {
   "w1": "Dlaczego 1: bezpośredni skutek fizyczny / zadziałanie zabezpieczenia",
   "w2": "Dlaczego 2: przyczyna mechaniczna, elektryczna lub termiczna",
@@ -69,7 +71,11 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contents: [{ parts: [{ text: promptText }] }],
-                generationConfig: { temperature: 0.2 }
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    temperature: 0.2,
+                    maxOutputTokens: 2048
+                }
             })
         });
 
@@ -87,35 +93,32 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown:
         return parsed;
     },
 
-    // 2. Multimodalne Wnioskowanie 5S Vision (Analiza Obrazu w Locie)
+    // 2. Multimodalne Wnioskowanie 5S Vision z automatycznym odzyskiwaniem stanu (Self-Healing Fallback)
     async analyzeVisual5S(imageBase64, stationMeta, auditorNotes) {
         const isOnlineReady = this.hasActiveApiKey() && navigator.onLine && Boolean(imageBase64);
 
         if (!isOnlineReady) {
-            console.log('[5S Vision] Tryb Edge Offline / brak załączonego zdjęcia.');
+            console.log('[5S Vision] Tryb Edge Offline.');
             return this.generateDeterministicVisionReport(stationMeta, auditorNotes);
         }
 
-        const apiKey = this.getApiKey();
-        const url = `${GEMINI_API_ENDPOINT}?key=${apiKey}`;
+        try {
+            const compressedBase64 = await this.compressImageForApi(imageBase64);
+            const apiKey = this.getApiKey();
+            const url = `${GEMINI_API_ENDPOINT}?key=${apiKey}`;
 
-        const promptText = `Jesteś bezwzględnym audytorem Lean i certyfikowanym ekspertem 5S w fabryce konstrukcji stalowych i obróbki mechanicznej.
+            const promptText = `Jesteś audytorem Lean i ekspertem 5S w zakładzie konstrukcji stalowych.
 Przeanalizuj przesłane zdjęcie stanowiska: "${stationMeta.name}" (Kod: ${stationMeta.code}).
-Wytyczne i wyłączenia audytora: "${auditorNotes || 'Standard fabryczny 5S'}".
+Wytyczne i uwagi audytora: "${auditorNotes || 'Brak dodatkowych uwag'}".
 
 Zadanie:
-1. Przeanalizuj widoczne elementy: czystość posadzki, stan odłożenia narzędzi/przewodów, oznaczenia stref żółtymi liniami, stan BHP, tablice cieni, zalegający urobek/złom.
-2. Wystaw oceny w skali 1.00 - 5.00 dla każdego filaru:
-   - 1S (Sortowanie - eliminacja zbędnych rzeczy)
-   - 2S (Systematyka - miejsce na wszystko i wszystko na swoim miejscu)
-   - 3S (Sprzątanie - czyszczenie jako inspekcja)
-   - 4S (Standaryzacja - etykiety, linie, tablice cieni)
-   - 5S (Samodyscyplina - przestrzeganie procedur)
-3. Oblicz ważoną ocenę ogólną (score).
-4. Podaj od 2 do 4 konkretnych obserwacji (niezgodności z ujemnymi punktami np. '-0.35 pkt (2S)' lub wzorce '+ Wzorcowo (1S)').
-5. Sformułuj jedno precyzyjne, techniczne zadanie CAPA dla Lidera Obszaru.
+1. Oceń widoczny stan: porządek na stole, odłożenie narzędzi, czystość posadzki, stan kabli, wióry, tablice cieni, BHP.
+2. Wystaw oceny w skali 1.00 - 5.00 dla: 1S (Sortowanie), 2S (Systematyka), 3S (Sprzątanie), 4S (Standaryzacja), 5S (Samodyscyplina).
+3. Oblicz średnią ocenę (score).
+4. Podaj zwięzłe obserwacje z karami punktowymi (np. "-0.40 pkt (2S)").
+5. Zaproponuj jedno konkretne działanie korygujące (CAPA).
 
-Zwróć WYŁĄCZNIE czysty JSON bez formatowania markdown:
+Zwróć obiekt JSON:
 {
   "score": "3.80",
   "s1": "4.10",
@@ -124,49 +127,97 @@ Zwróć WYŁĄCZNIE czysty JSON bez formatowania markdown:
   "s4": "3.80",
   "s5": "3.80",
   "observations": [
-    { "text": "opis wykrytej niezgodności na zdjęciu", "pen": "-0.40 pkt (2S)" },
-    { "text": "opis pozytywnego standardu", "pen": "+ Wzorcowo (3S)" }
+    { "text": "opis zidentyfikowanego problemu", "pen": "-0.40 pkt (2S)" },
+    { "text": "opis zaobserwowanej dobrej praktyki", "pen": "+ Wzorcowo (3S)" }
   ],
   "capa": "Konkretne zadanie korygujące dla Lidera Stanowiska"
 }`;
 
-        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: promptText },
-                        {
-                            inline_data: {
-                                mime_type: "image/jpeg",
-                                data: cleanBase64
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: promptText },
+                            {
+                                inline_data: {
+                                    mime_type: "image/jpeg",
+                                    data: compressedBase64
+                                }
                             }
-                        }
-                    ]
-                }],
-                generationConfig: { temperature: 0.2 }
-            })
-        });
+                        ]
+                    }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        temperature: 0.2,
+                        maxOutputTokens: 2048
+                    }
+                })
+            });
 
-        if (!response.ok) {
-            const err = await response.text();
-            throw new Error(`Google Vision API HTTP ${response.status}: ${err}`);
+            if (!response.ok) {
+                const errText = await response.text();
+                console.warn(`[5S Vision] Google API zwróciło status ${response.status}. Przełączanie na Edge Fallback.`, errText);
+                return this.generateDeterministicVisionReport(stationMeta, auditorNotes, true);
+            }
+
+            const data = await response.json();
+            if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+                throw new Error("Pusta struktura odpowiedzi z API");
+            }
+
+            let rawText = data.candidates[0].content.parts[0].text.trim();
+            rawText = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+
+            const parsed = JSON.parse(rawText);
+            parsed.source = `Gemini Vision (${GEMINI_MODEL})`;
+            return parsed;
+
+        } catch (err) {
+            console.warn('[5S Vision] Wystąpił błąd podczas analizy chmurowej (przeciążenie 503 lub błąd parsowania JSON). Aktywacja bezpiecznego Edge Fallback:', err);
+            return this.generateDeterministicVisionReport(stationMeta, auditorNotes, true);
         }
-
-        const data = await response.json();
-        let rawText = data.candidates[0].content.parts[0].text.trim();
-        rawText = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-
-        const parsed = JSON.parse(rawText);
-        parsed.source = `Gemini Vision (${GEMINI_MODEL})`;
-        return parsed;
     },
 
-    // Deterministyczny generator audytu dla jurora (Offline / brak klucza)
-    generateDeterministicVisionReport(stationMeta, auditorNotes) {
+    // Kompresja obrazu przez ukryte Canvas
+    compressImageForApi(base64Str) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const maxDim = 1024;
+
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+                const cleanBase64 = dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+                resolve(cleanBase64);
+            };
+            img.onerror = () => {
+                resolve(base64Str.replace(/^data:image\/\w+;base64,/, ''));
+            };
+            img.src = base64Str;
+        });
+    },
+
+    // Deterministyczny silnik awaryjny (gwarantuje ciągłość działania aplikacji w razie 503)
+    generateDeterministicVisionReport(stationMeta, auditorNotes, isFallback = false) {
         const note = (auditorNotes || '').toLowerCase();
         let s1 = "3.90", s2 = "3.40", s3 = "4.10", s4 = "3.80", s5 = "3.70";
         let score = "3.78";
@@ -177,21 +228,25 @@ Zwróć WYŁĄCZNIE czysty JSON bez formatowania markdown:
         ];
         let capa = "Wyznaczenie żółtych stref komunikacyjnych i montaż podwieszanego wysięgnika przewodów.";
 
-        if (note.includes('drut') || note.includes('uchwyt') || note.includes('palnik')) {
+        if (note.includes('wiertark') || stationMeta.name.toLowerCase().includes('wiertark')) {
+            s1 = "3.60"; s2 = "3.20"; s3 = "3.80"; score = "3.55";
+            obs = [
+                { text: "Wióry metalowe zalegają na stole roboczym wiertarki", pen: "-0.60 pkt (3S)" },
+                { text: "Klucz do uchwytu wiertarskiego leży luzem na korpusie", pen: "-0.50 pkt (2S)" },
+                { text: "Pojemnik na chłodziwo prawidłowo zabezpieczony", pen: "+ Wzorcowo (1S)" }
+            ];
+            capa = "Montaż sprężynowego uchwytu na klucz wiertarki oraz szczotki do wiórów na magnesie.";
+        } else if (note.includes('drut') || note.includes('uchwyt') || note.includes('palnik')) {
             s2 = "3.10"; score = "3.62";
             obs[0] = { text: "Uchwyt roboczy odłożony poza polem tablicy cieni", pen: "-0.60 pkt (2S)" };
             capa = "Wdrożenie magnetycznego uchwytu szybkiego odkładania w zasięgu dłoni pracownika.";
-        } else if (note.includes('ażur') || note.includes('blach') || note.includes('złom')) {
-            s1 = "3.00"; score = "3.55";
-            obs[0] = { text: "Zalegający urobek przekracza obrys palety buforowej", pen: "-0.70 pkt (1S)" };
-            capa = "Zwiększenie gabarytu kosza złomowego oraz procedura wymiany pojemników co 2h.";
         }
 
         return {
             score, s1, s2, s3, s4, s5,
             observations: obs,
             capa: capa,
-            source: "Wbudowany Silnik Regułowy Vision (Edge Offline)"
+            source: isFallback ? "Edge Vision (Autonomiczny Fallback przy przeciążeniu API)" : "Wbudowany Silnik Regułowy (Edge Offline)"
         };
     },
 
@@ -204,16 +259,6 @@ Zwróć WYŁĄCZNIE czysty JSON bez formatowania markdown:
         let w5 = "Brak ustandaryzowanej procedury SOP weryfikacji naprężeń arkuszy oraz kontroli zużycia oprzyrządowania.";
         let capa = "Wdrożenie obowiązkowej karty kontroli parametrów w oprogramowaniu CAM oraz audyt TPM stołu roboczego.";
         let owner = "Główny Technolog / Utrzymanie Ruchu";
-
-        if (note.includes('wiertark') || note.includes('reaguje') || note.includes('zasilan')) {
-            w1 = "Brak reakcji układu napędowego wrzeciona na sygnał startu cyklu roboczego.";
-            w2 = "Obwód sterowania 24V DC nie podaje sygnału zezwolenia na falownik główny.";
-            w3 = "Zadziałał wyłącznik krańcowy osłony lub nastąpiło wybicie zabezpieczenia termicznego silnika.";
-            w4 = "Operator pominął procedurę resetu obwodu E-STOP po poprzednim przezbrojeniu narzędzia.";
-            w5 = "Przyczyna Źródłowa: Brak czytelnej sygnalizacji stanu blokad Poka-Yoke na pulpicie operatora.";
-            capa = "Montaż diody LED stanu obwodu zezwolenia pracy oraz weryfikacja styków krańcówki osłony.";
-            owner = "Utrzymanie Ruchu (Automatyka)";
-        }
 
         return {
             w1, w2, w3, w4, w5, capa, owner,
