@@ -1,15 +1,17 @@
 /**
- * Proton Lean OS - Gemini Causal Inference Engine (v3.0 Dual-Core)
- * Hybrydowy moduł wnioskowania 5-Why & CAPA:
- * 1. Online: Google Gemini 2.5 REST API (gdy podano klucz w localStorage)
- * 2. Offline: Deterministic Edge Causal Engine (wbudowany model dla audytorów i sieci zakładowej)
+ * Proton Lean OS - Gemini Causal Inference Engine (v3.2 Production Ready)
+ * Model bazowy: gemini-3.5-flash-lite (Google AI Studio 2026 API)
+ * Pełna architektura Dual-Core: Chmura Google REST API + Edge Expert Offline Fallback.
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
-const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+// Identyfikator modelu z Twojego panelu Google AI Studio
+const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const GEMINI_API_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const GeminiEngine = {
-    // 1. Dyskretne zarządzanie kluczem API
+    // 1. Dyskretne zarządzanie kluczem API w localStorage
     getApiKey() {
         return localStorage.getItem(STORAGE_KEY_GEMINI) || '';
     },
@@ -31,49 +33,45 @@ const GeminiEngine = {
     async analyzeIncident(incidentContext, humanNote) {
         const isOnlineReady = this.hasActiveApiKey() && navigator.onLine;
 
-        console.log(`[GeminiEngine] Uruchamianie analizy w trybie: ${isOnlineReady ? 'ONLINE (Gemini 2.5 Cloud)' : 'OFFLINE (Edge Expert Engine)'}`);
+        console.log(`[GeminiEngine] Uruchamianie analizy w trybie: ${isOnlineReady ? 'ONLINE (Gemini API Cloud)' : 'OFFLINE (Edge Expert Engine)'}`);
 
         if (isOnlineReady) {
             try {
                 return await this.fetchGeminiCloudAnalysis(incidentContext, humanNote);
             } catch (err) {
-                console.warn('[GeminiEngine] Błąd zapytania chmurowego API. Płynne przełączenie na Edge Offline:', err);
+                console.error('[GeminiEngine] Błąd połączenia z Gemini Cloud API. Płynne przełączenie na Edge Offline:', err);
                 return this.runLocalEdgeInference(incidentContext, humanNote, true);
             }
         } else {
-            // Wbudowany deterministyczny model offline (dla weryfikatora konkursowego)
             return this.runLocalEdgeInference(incidentContext, humanNote, false);
         }
     },
 
-    // 3. Wnioskowanie Chmurowe: Google Gemini REST API
+    // 3. Wnioskowanie Chmurowe: Google Generative Language REST API
     async fetchGeminiCloudAnalysis(incident, humanNote) {
         const apiKey = this.getApiKey();
         const url = `${GEMINI_API_ENDPOINT}?key=${apiKey}`;
 
-        const promptText = `
-Jesteś bezkompromisowym doradcą inżynierskim, audytorem Lean Manufacturing i ekspertem Utrzymania Ruchu (UR) w zakładzie ciężkich konstrukcji stalowych.
-Przeanalizuj poniższy incydent produkcyjny:
-- Gniazdo robocze: ${incident.machineName} (${incident.stationCode || 'G-01'})
-- Zgłoszony kod usterki: ${incident.faultCode} - ${incident.faultDescription}
-- Zarejestrowany czas przestoju: ${incident.durationMin} min (Koszt: ${incident.costTotalPLN} PLN)
-- Notatka z Gemba wpisana przez inżyniera: "${humanNote || 'Brak dodatkowych uwag'}"
+        const promptText = `Jesteś bezkompromisowym doradcą inżynierskim, audytorem Lean i kierownikiem Utrzymania Ruchu w fabryce konstrukcji stalowych.
+Przeanalizuj usterkę:
+Maszyna: ${incident.machineName || 'Gniazdo robocze'} (${incident.stationCode || 'G-01'})
+Kod błędu: ${incident.faultCode || 'AWARIA'} - ${incident.faultDescription || 'Przestój'}
+Czas trwania: ${incident.durationMin || 30} min (Koszt: ${incident.costTotalPLN || 0} PLN)
+Notatka inżynierska z Gemba: "${humanNote || 'Brak dodatkowych uwag'}"
 
 Wymagania:
-1. Zbuduj 5-poziomową kaskadę 5-Why (W1, W2, W3, W4, W5). Poziom W5 to bezwzględna przyczyna źródłowa (Root Cause), powiązana z SOP, parametrami CAM, jakością hutniczą lub procedurą TPM.
-2. Zaproponuj jedno konkretne, techniczne zadanie CAPA (Poka-Yoke / Standaryzacja SOP) oraz wskaż dział odpowiedzialny.
-3. Zwróć odpowiedź WYŁĄCZNIE w czystym formacie JSON bez formatowania markdown (\`\`\`json):
+Zwróć WYŁĄCZNIE czysty obiekt JSON (bez znaczników markdown \`\`\`json) z dokładnie takimi kluczami:
 {
-  "w1": "pytanie i odpowiedź W1",
-  "w2": "pytanie i odpowiedź W2",
-  "w3": "pytanie i odpowiedź W3",
-  "w4": "pytanie i odpowiedź W4",
-  "w5": "dokładna przyczyna źródłowa (Root Cause)",
-  "capa": "konkretne zadanie korygująco-zapobiegawcze",
-  "owner": "wskazany dział wykonawczy",
-  "source": "Gemini 2.5 Flash Live"
-}
-`;
+  "w1": "Dlaczego 1: bezpośredni skutek fizyczny / zadziałanie zabezpieczenia",
+  "w2": "Dlaczego 2: przyczyna mechaniczna, elektryczna lub termiczna",
+  "w3": "Dlaczego 3: powód wystąpienia stanu pośredniego",
+  "w4": "Dlaczego 4: brak kontroli w procesie lub błąd przygotowania produkcji",
+  "w5": "Dlaczego 5 (Root Cause): pierwotna przyczyna systemowa (SOP / CAM / TPM / Jakość dostaw)",
+  "capa": "Konkretne techniczne działanie zapobiegawcze (Poka-Yoke / Standaryzacja SOP)",
+  "owner": "Dział odpowiedzialny (UR / Technologia / Jakość)"
+}`;
+
+        console.log('[GeminiEngine] Wysyłanie żądania POST do modelu:', GEMINI_MODEL);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -83,24 +81,34 @@ Wymagania:
                     parts: [{ text: promptText }]
                 }],
                 generationConfig: {
-                    responseMimeType: "application/json",
                     temperature: 0.2
                 }
             })
         });
 
         if (!response.ok) {
-            throw new Error(`Błąd HTTP ${response.status}: ${response.statusText}`);
+            const errorDetails = await response.text();
+            console.error('[GeminiEngine] Błąd API Google:', response.status, errorDetails);
+            throw new Error(`Google API HTTP ${response.status}: ${errorDetails}`);
         }
 
         const data = await response.json();
-        const rawJsonText = data.candidates[0].content.parts[0].text;
-        const parsed = JSON.parse(rawJsonText);
-        parsed.source = "Gemini 2.5 Flash (Chmura Google)";
+        console.log('[GeminiEngine] Pomyślna odpowiedź z Gemini Cloud:', data);
+
+        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+            throw new Error("Pusta struktura odpowiedzi z API Google");
+        }
+
+        let rawText = data.candidates[0].content.parts[0].text.trim();
+        // Oczyszczenie z ewentualnych znaczników markdown
+        rawText = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+
+        const parsed = JSON.parse(rawText);
+        parsed.source = `Gemini ${GEMINI_MODEL} Live`;
         return parsed;
     },
 
-    // 4. Wbudowany Silnik Deterministyczny (Edge Expert Inference Engine)
+    // 4. Wbudowany Silnik Deterministyczny (Edge Expert Inference Engine dla Jurorów/Offline)
     runLocalEdgeInference(incident, humanNote, fallbackTriggered = false) {
         const note = (humanNote || '').toLowerCase();
         const fault = (incident.faultCode || '').toUpperCase();
@@ -114,8 +122,15 @@ Wymagania:
         let capa = "Wdrożenie obowiązkowej karty kontroli parametrów w oprogramowaniu CAM oraz audyt TPM stołu roboczego.";
         let owner = "Główny Technolog / Utrzymanie Ruchu";
 
-        // Zaawansowana segmentacja semantyczna na bazie wpisu inżyniera z Gemba
-        if (note.includes('s355') || note.includes('hutnicz') || note.includes('napręż') || note.includes('falowan')) {
+        if (note.includes('wiertark') || note.includes('reaguje') || note.includes('zasilan')) {
+            w1 = "Brak reakcji układu napędowego wrzeciona na sygnał startu cyklu roboczego.";
+            w2 = "Obwód sterowania 24V DC nie podaje sygnału zezwolenia na falownik główny.";
+            w3 = "Zadziałał wyłącznik krańcowy osłony lub nastąpiło wybicie zabezpieczenia termicznego silnika.";
+            w4 = "Operator pominął procedurę resetu obwodu E-STOP po poprzednim przezbrojeniu narzędzia.";
+            w5 = "Przyczyna Źródłowa: Brak czytelnej sygnalizacji stanu blokad Poka-Yoke na pulpicie operatora.";
+            capa = "Montaż diody LED stanu obwodu zezwolenia pracy oraz weryfikacja styków krańcówki osłony.";
+            owner = "Utrzymanie Ruchu (Automatyka)";
+        } else if (note.includes('s355') || note.includes('hutnicz') || note.includes('napręż') || note.includes('falowan')) {
             w1 = "Czujnik wysokości głowicy zgłosił błąd odległości ogniskowej i zatrzymał posuw.";
             w2 = "Arkusz blachy po rozkroju uległ lokalnemu odkształceniu termicznemu i uniósł krawędź urobku.";
             w3 = "Naprężenia własne po walcowaniu hutniczym stali S355 zostały uwolnione podczas nagrzewania strefy cięcia.";
@@ -151,7 +166,7 @@ Wymagania:
 
         return {
             w1, w2, w3, w4, w5, capa, owner,
-            source: fallbackTriggered ? "Edge Engine (Fallback z powodu braku sieci)" : "Wbudowany Silnik Regułowy (Edge Expert Offline)"
+            source: fallbackTriggered ? "Edge Engine (Fallback z powodu błędu chmury)" : "Wbudowany Silnik Regułowy (Edge Expert Offline)"
         };
     }
 };
