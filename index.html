@@ -627,58 +627,117 @@
         </div>
     </main>
 
-   <!-- TAB 3: 5S VISION (MULTIMODAL AI) -->
+  <!-- TAB 3: 5S VISION (MULTIMODAL AI & AUDIT TRAIL) -->
     <main id="tab-audit5s" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
             
-            <div class="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
+            <!-- Górny Pasek: Wybór Stanowiska, Dodawanie Nowego & Upload Zdjęcia -->
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
                 <div>
                     <div class="flex items-center gap-3">
                         <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="scan" class="w-6 h-6"></i></span>
-                        <h2 class="text-lg font-bold text-white">Moduł 5S Vision (Gemini Multimodal AI)</h2>
+                        <div>
+                            <h2 class="text-lg font-bold text-white">5S Vision: System Cyfrowych Audytów Multimodalnych</h2>
+                            <p class="text-xs text-slate-300">Autonomiczna ocena standardów 1S-5S z kamer RTSP lub przesłanych fotografii inspekcyjnych.</p>
+                        </div>
                     </div>
-                    <p class="text-xs text-slate-300 mt-1">Wizualna inspekcja stanowisk roboczych pod kątem standardów 1S-5S z kamer przemysłowych lub przesłanego zdjęcia.</p>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-3">
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-bold text-slate-300 uppercase">Stanowisko:</span>
-                        <select id="audit-workstation-select" onchange="loadStationAudit()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
-                            <option value="ws_weld" selected>Spawanie Manualne MIG/MAG (Stanowisko S-02)</option>
-                            <option value="ws_laser">Laser BLM Płytowy CNC (Strefa Rozładunku L-01)</option>
-                            <option value="ws_saw">Piła Tarczowa do Metalu (Gniazdo P-01)</option>
-                            <option value="ws_bender">Giętarka do Rur CNC (Strefa Matryc G-01)</option>
-                            <option value="ws_final">Stanowisko Montażu Końcowego (M-01)</option>
+                        <select id="vision-station-select" onchange="onVisionStationChange()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
+                            <!-- Wypełniane dynamicznie z localStorage -->
                         </select>
                     </div>
 
-                    <!-- Przycisk wczytania własnego zdjęcia -->
+                    <button onclick="openNewStationModal()" class="px-3.5 py-2.5 bg-graphite-950 hover:bg-graphite-850 text-gold-400 border border-gold-500/40 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i> Nowe Stanowisko
+                    </button>
+
                     <label class="cursor-pointer px-4 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-gold-400 border-2 border-gold-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-2 shadow-sm">
                         <i data-lucide="camera" class="w-4 h-4"></i>
-                        <span id="upload-label-text">Wgraj Zdjęcie z Hali</span>
+                        <span id="vision-upload-label">Wgraj Zdjęcie</span>
                         <input type="file" id="vision-file-input" accept="image/*" class="hidden" onchange="handleVisionImageUpload(event)">
                     </label>
                 </div>
             </div>
 
-            <!-- Panel wprowadzania uwag audytora -->
+            <!-- Panel Kontekstu Audytora -->
             <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 flex flex-col md:flex-row items-stretch md:items-center gap-4">
                 <div class="flex-1 space-y-1.5">
                     <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
-                        <i data-lucide="eye" class="w-4 h-4"></i> Wytyczne & Wyłączenia dla Modelu Wizyjnego:
+                        <i data-lucide="eye" class="w-4 h-4"></i> Wskazówki & Ograniczenia dla Agenta Gemini Vision:
                     </label>
-                    <input type="text" id="audit-human-notes" value="Zwróć uwagę na odłożenie przewodów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-900 border-2 border-graphite-750 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
+                    <input type="text" id="vision-human-notes" value="Zwróć uwagę na odłożenie przewodów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-900 border-2 border-graphite-750 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
                 </div>
-                <button onclick="triggerVisionAudit()" id="btn-run-vision" class="px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0 self-end md:self-auto">
+                <button onclick="executeLiveVisionAudit()" id="btn-run-vision" class="px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0 self-end md:self-auto">
                     <i data-lucide="scan-line" class="w-4 h-4"></i> Uruchom Inspekcję 5S Vision
                 </button>
             </div>
 
-            <!-- Obszar wyników audytu -->
-            <div id="station-audit-content" class="grid grid-cols-1 lg:grid-cols-12 gap-6"></div>
+            <!-- Zakładki: Aktualna Ocena vs Historia Audytów -->
+            <div class="flex items-center gap-3 border-b border-graphite-750 pb-2">
+                <button onclick="switchVisionSubTab('current')" id="vtab-btn-current" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 transition flex items-center gap-2">
+                    <i data-lucide="activity" class="w-4 h-4"></i> Aktualna Ocena (Bieżący Stan)
+                </button>
+                <button onclick="switchVisionSubTab('history')" id="vtab-btn-history" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center gap-2">
+                    <i data-lucide="history" class="w-4 h-4"></i> Ślad Audytowy & Historia (<span id="history-count-badge">0</span>)
+                </button>
+            </div>
+
+            <!-- SUB-TAB 1: AKTUALNA OCENA -->
+            <div id="vision-subtab-current" class="grid grid-cols-1 lg:grid-cols-12 gap-6"></div>
+
+            <!-- SUB-TAB 2: HISTORIA AUDYTÓW DANEGO STANOWISKA -->
+            <div id="vision-subtab-history" class="hidden space-y-4">
+                <div id="vision-history-list" class="space-y-3"></div>
+            </div>
+
         </div>
     </main>
 
+    <!-- MODAL: DODAWANIE NOWEGO STANOWISKA ROBOCZEGO -->
+    <div id="new-station-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-graphite-900 border-[3px] border-gold-500/80 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="px-6 py-4.5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 border border-gold-400/50 flex items-center justify-center font-bold">
+                        <i data-lucide="plus" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-extrabold text-white uppercase tracking-wider">Nowe Stanowisko 5S</h3>
+                        <p class="text-xs text-slate-300">Dodaj gniazdo produkcyjne do rejestru</p>
+                    </div>
+                </div>
+                <button onclick="closeNewStationModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-4 text-xs">
+                <div class="space-y-1.5">
+                    <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Nazwa Stanowiska / Maszyny:</label>
+                    <input type="text" id="new-station-name" placeholder="np. Spawalnia Bram Ciężkich" class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                        <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Kod Stanowiska:</label>
+                        <input type="text" id="new-station-code" placeholder="np. S-03" class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white uppercase font-mono-numbers focus:outline-none transition">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Obszar / Hala:</label>
+                        <input type="text" id="new-station-area" placeholder="np. Hala PK1" class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition">
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex justify-end gap-2">
+                <button onclick="closeNewStationModal()" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">Anuluj</button>
+                <button onclick="saveNewStation()" class="px-5 py-2 bg-gold-500 hover:bg-gold-400 text-graphite-950 text-xs font-extrabold rounded-xl transition shadow-md">Dodaj Stanowisko</button>
+            </div>
+        </div>
+    </div>
     <!-- TAB 4: SYMULATOR WHAT-IF -->
     <main id="tab-whatif" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">

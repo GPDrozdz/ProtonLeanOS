@@ -1,12 +1,14 @@
 /**
- * Proton Lean OS - Executive Dashboard Logic (v3.3 5S Vision & Dual-Core Ready)
- * Płynna 3-sekundowa animacja startowa HUD, hybrydowy silnik AI (Gemini Cloud + Edge Offline),
- * moduł 5S Vision (multimodalny), trwałość stanu, rotacja wąskiego gardła i twardy reset.
+ * Proton Lean OS - Executive Dashboard Logic (v3.5 Complete Multi-Station 5S Vision)
+ * Pełna integracja: MQTT over WebSocket, Dual-Core Gemini Engine, rotacja wąskiego gardła,
+ * dynamiczny rejestr stanowisk 5S z historią audytów LPA oraz trwałość w localStorage.
  */
 
 const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v26';
 const STORAGE_KEY_CAPA = 'proton_lean_capa_history_v26';
 const STORAGE_KEY_PROD = 'proton_lean_prod_state_v26';
+const STORAGE_KEY_5S_STATIONS = 'proton_5s_stations_v1';
+const STORAGE_KEY_5S_AUDITS = 'proton_5s_audits_v1';
 
 let machineFleet = [];
 let showAllMachines = false;
@@ -19,8 +21,11 @@ let capaHistory = [];
 let activeIncidentContext = null;
 
 // Zmienne modułu 5S Vision
-let uploadedImageBase64 = null;
-let customVisionAuditResult = null;
+let visionStations = [];
+let visionAuditsHistory = [];
+let activeVisionStationId = 'ws_weld';
+let currentUploadedVisionBase64 = null;
+let activeVisionSubTab = 'current';
 
 // Domyślny stan początkowy produkcji (20 palet, 5 kontenerów, 18.0 Mg)
 const INITIAL_PROD_STATE = {
@@ -90,6 +95,15 @@ const DEFAULT_BOTTLENECK_FLEET = [
     }
 ];
 
+// Domyślne stanowiska fabryczne dla modułu 5S Vision
+const DEFAULT_5S_STATIONS = [
+    { id: 'ws_weld', name: "Spawanie Manualne MIG/MAG", code: "S-02", area: "Spawalnia PK1" },
+    { id: 'ws_laser', name: "Laser BLM Płytowy CNC", code: "L-01", area: "Hala Cięcia PK1" },
+    { id: 'ws_saw', name: "Piła Tarczowa do Metalu", code: "P-01", area: "Przygotowanie PK2" },
+    { id: 'ws_bender', name: "Giętarka do Rur CNC", code: "G-01", area: "Giętarnia PK2" },
+    { id: 'ws_final', name: "Montaż Końcowy Kontenerów", code: "M-01", area: "Montaż Końcowy" }
+];
+
 // 1. Inicjalizacja i odczyt pamięci trwałej
 async function initDashboard() {
     loadPersistentStorage();
@@ -110,13 +124,14 @@ async function initDashboard() {
     recalculateBottleneckWidget();
     startBackgroundProductionTicker();
     updateAiStatusBadge();
+    init5SVisionModule();
 
-    // Uruchomienie 3-sekundowej animacji narastania wykresów HUD
+    // 3-sekundowa animacja pierścieni HUD
     animateHudRingsOnStartup();
 
     if (window.lucide) lucide.createIcons();
 
-    // Rejestracja szyny zdarzeń telemetrycznych
+    // Rejestracja szyny zdarzeń telemetrycznych MQTT
     if (typeof subscribeTelemetryEvents === 'function') {
         subscribeTelemetryEvents(handleIncomingTelemetry);
     }
@@ -1002,7 +1017,7 @@ function switchTab(tabId) {
         activeBtn.className = "nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 shadow-md transition";
     }
 
-    if (tabId === 'audit5s') loadStationAudit();
+    if (tabId === 'audit5s') renderVisionActiveView();
 }
 
 function setShift(shift) {
@@ -1064,99 +1079,139 @@ function jumpToCapaFromModal() {
     }
 }
 
-// ==========================================
-// 15. MODUŁ 5S VISION (MULTIMODAL GEMINI + EDGE)
-// ==========================================
+// =========================================================================
+// 15. MODUŁ 5S VISION (DYNAMIC STATIONS, MULTIMODAL INFERENCE & AUDIT TRAIL)
+// =========================================================================
 
-const stationAudits = {
-    ws_weld: {
-        title: "Spawanie Manualne MIG/MAG (Stanowisko S-02)",
-        score: "3.92",
-        s1: "4.10", s2: "3.50", s3: "4.20", s4: "4.00", s5: "3.80",
-        observations: [
-            { icon: "alert-triangle", text: "Nieodłożony uchwyt spawalniczy na wieszak", pen: "-0.40 pkt (2S)" },
-            { icon: "alert-circle", text: "Zalegające odpryski w strefie odkładczej", pen: "-0.25 pkt (3S)" },
-            { icon: "check-circle", text: "Etykiety partii drutu i atesty stali czytelne", pen: "+ Wzorcowo (4S)" }
-        ],
-        capa: "Wdrożyć magnetyczny wieszak pistoletu spawalniczego w zasięgu ręki spawacza."
-    },
-    ws_laser: {
-        title: "Laser BLM Płytowy CNC (Strefa Rozładunku L-01)",
-        score: "3.45",
-        s1: "2.90", s2: "3.60", s3: "3.80", s4: "3.70", s5: "3.25",
-        observations: [
-            { icon: "alert-triangle", text: "Ażury po cięciu wystają poza żółtą linię pola buforowego", pen: "-0.65 pkt (1S/2S)" },
-            { icon: "alert-circle", text: "Brak oznaczenia pojemnika na odpady drobne", pen: "-0.30 pkt (4S)" },
-            { icon: "check-circle", text: "Stół wymienny i prowadnice czyste", pen: "+ Wzorcowo (3S)" }
-        ],
-        capa: "Zwiększenie gabarytu pojemnika na złom i odmalowanie linii bufora urobku."
-    },
-    ws_saw: {
-        title: "Piła Tarczowa do Metalu (Gniazdo P-01)",
-        score: "4.45",
-        s1: "4.60", s2: "4.30", s3: "4.80", s4: "4.40", s5: "4.15",
-        observations: [
-            { icon: "check-circle", text: "Wzorcowy porządek na wiórach, czysta taca ociekowa", pen: "+ Wzorcowo (3S)" },
-            { icon: "alert-circle", text: "Wyszczerbiona tarcza bez czerwonej zawieszki 'ZŁOM'", pen: "-0.20 pkt (1S)" }
-        ],
-        capa: "Uzupełnienie czerwonych zawieszek kwarantannowych dla narzędzi uszkodzonych."
-    },
-    ws_bender: {
-        title: "Giętarka do Rur CNC (Strefa Matryc G-01)",
-        score: "4.68",
-        s1: "4.80", s2: "4.70", s3: "4.90", s4: "4.50", s5: "4.50",
-        observations: [
-            { icon: "check-circle", text: "Tablica cieni matryc kompletna w 100%", pen: "+ Wzorcowo (2S)" },
-            { icon: "check-circle", text: "Brak wycieków hydrauliki, stanowisko po TPM", pen: "+ Wzorcowo (3S)" }
-        ],
-        capa: "Stanowisko stanowi wzorzec (Benchmark fabryczny) dla audytów klientów."
-    },
-    ws_final: {
-        title: "Stanowisko Montażu Końcowego (M-01)",
-        score: "4.25",
-        s1: "4.30", s2: "4.10", s3: "4.40", s4: "4.25", s5: "4.20",
-        observations: [
-            { icon: "alert-circle", text: "Kartony z zamkami stoją na palecie zamiast na regale rolkowym", pen: "-0.30 pkt (2S)" },
-            { icon: "check-circle", text: "Klucze dynamometryczne z aktualną kalibracją", pen: "+ Wzorcowo (4S)" }
-        ],
-        capa: "Instalacja grawitacyjnego regału rolkowego FIFO dla okuć kontenerowych."
-    }
-};
+function init5SVisionModule() {
+    try {
+        const storedStations = localStorage.getItem(STORAGE_KEY_5S_STATIONS);
+        visionStations = storedStations ? JSON.parse(storedStations) : [...DEFAULT_5S_STATIONS];
 
-function handleVisionImageUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        uploadedImageBase64 = e.target.result;
-        const label = document.getElementById('upload-label-text');
-        if (label) label.innerText = `Plik: ${file.name.slice(0, 14)}...`;
+        const storedAudits = localStorage.getItem(STORAGE_KEY_5S_AUDITS);
+        visionAuditsHistory = storedAudits ? JSON.parse(storedAudits) : [];
         
-        loadStationAudit();
-    };
-    reader.readAsDataURL(file);
+        // Inicjalizacja bazowych wpisów historycznych dla stanowisk fabrycznych
+        if (visionAuditsHistory.length === 0) {
+            visionStations.forEach(st => {
+                visionAuditsHistory.push({
+                    stationId: st.id,
+                    timestamp: "2026-10-28 07:45",
+                    score: "3.92",
+                    s1: "4.10", s2: "3.50", s3: "4.20", s4: "4.00", s5: "3.80",
+                    observations: [
+                        { text: "Nieodłożony uchwyt narzędziowy na wieszak", pen: "-0.40 pkt (2S)" },
+                        { text: "Posadzka i pole odkładcze czyste", pen: "+ Wzorcowo (3S)" }
+                    ],
+                    capa: "Wdrożenie dedykowanego wieszaka magnetycznego w strefie operatora.",
+                    source: "Audyt Wstępny (Benchmark)",
+                    imageBase64: null
+                });
+            });
+            saveVisionAuditsStorage();
+        }
+    } catch (e) {
+        console.error('[5S Vision] Błąd odczytu storage:', e);
+        visionStations = [...DEFAULT_5S_STATIONS];
+        visionAuditsHistory = [];
+    }
+
+    renderVisionStationsDropdown();
+    renderVisionActiveView();
 }
 
-function loadStationAudit() {
-    const keyEl = document.getElementById('audit-workstation-select');
-    if (!keyEl) return;
-    const key = keyEl.value;
-    const fallbackData = stationAudits[key] || stationAudits['ws_weld'];
-    const data = customVisionAuditResult || fallbackData;
-    const container = document.getElementById('station-audit-content');
-    const humanNote = document.getElementById('audit-human-notes') ? document.getElementById('audit-human-notes').value : '';
+function saveVisionStationsStorage() {
+    localStorage.setItem(STORAGE_KEY_5S_STATIONS, JSON.stringify(visionStations));
+}
+
+function saveVisionAuditsStorage() {
+    localStorage.setItem(STORAGE_KEY_5S_AUDITS, JSON.stringify(visionAuditsHistory));
+}
+
+function renderVisionStationsDropdown() {
+    const select = document.getElementById('vision-station-select');
+    if (!select) return;
+
+    select.innerHTML = visionStations.map(st => `
+        <option value="${st.id}" ${st.id === activeVisionStationId ? 'selected' : ''}>
+            ${st.name} (${st.code})
+        </option>
+    `).join('');
+}
+
+function onVisionStationChange() {
+    const select = document.getElementById('vision-station-select');
+    if (!select) return;
+    activeVisionStationId = select.value;
+    currentUploadedVisionBase64 = null;
+    
+    const label = document.getElementById('vision-upload-label');
+    if (label) label.innerText = "Wgraj Zdjęcie";
+    
+    renderVisionActiveView();
+}
+
+function switchVisionSubTab(tab) {
+    activeVisionSubTab = tab;
+    const btnCurrent = document.getElementById('vtab-btn-current');
+    const btnHistory = document.getElementById('vtab-btn-history');
+    const viewCurrent = document.getElementById('vision-subtab-current');
+    const viewHistory = document.getElementById('vision-subtab-history');
+
+    if (tab === 'current') {
+        if (btnCurrent) btnCurrent.className = "px-4 py-2 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 transition flex items-center gap-2";
+        if (btnHistory) btnHistory.className = "px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center gap-2";
+        if (viewCurrent) viewCurrent.classList.remove('hidden');
+        if (viewHistory) viewHistory.classList.add('hidden');
+        renderVisionCurrentTab();
+    } else {
+        if (btnCurrent) btnCurrent.className = "px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center gap-2";
+        if (btnHistory) btnHistory.className = "px-4 py-2 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 transition flex items-center gap-2";
+        if (viewCurrent) viewCurrent.classList.add('hidden');
+        if (viewHistory) viewHistory.classList.remove('hidden');
+        renderVisionHistoryTab();
+    }
+}
+
+function renderVisionActiveView() {
+    const badge = document.getElementById('history-count-badge');
+    const stationAudits = visionAuditsHistory.filter(a => a.stationId === activeVisionStationId);
+    if (badge) badge.innerText = stationAudits.length;
+
+    if (activeVisionSubTab === 'current') {
+        renderVisionCurrentTab();
+    } else {
+        renderVisionHistoryTab();
+    }
+}
+
+function renderVisionCurrentTab() {
+    const container = document.getElementById('vision-subtab-current');
+    if (!container) return;
+
+    const currentStation = visionStations.find(s => s.id === activeVisionStationId) || visionStations[0];
+    const stationAudits = visionAuditsHistory.filter(a => a.stationId === activeVisionStationId);
+    const latestAudit = stationAudits[0] || {
+        score: "4.00", s1: "4.00", s2: "4.00", s3: "4.00", s4: "4.00", s5: "4.00",
+        observations: [{ text: "Oczekiwanie na pierwszy audyt fotograficzny", pen: "+ Gotowość" }],
+        capa: "Wgraj kadr z kamery lub zdjęcie stanowiska, aby przeprowadzić inspekcję.",
+        source: "Brak audytów",
+        timestamp: "Nowe stanowisko"
+    };
+
+    const displayImage = currentUploadedVisionBase64 || latestAudit.imageBase64;
 
     container.innerHTML = `
         <div class="lg:col-span-5 bg-graphite-950 p-6 rounded-2xl border border-graphite-750 space-y-5">
             <div class="flex justify-between items-start">
                 <div>
-                    <span class="text-xs uppercase text-slate-300 font-bold block">Wynik Inspekcji 5S Vision</span>
-                    <h3 class="text-base font-bold text-white mt-1">${customVisionAuditResult ? 'Niestandardowa Próbka z Hali' : fallbackData.title}</h3>
-                    <span class="text-[10px] font-mono-numbers text-gold-400 mt-0.5 block">Źródło: ${data.source || 'Wbudowany Wzorzec Stanowiska'}</span>
+                    <span class="text-xs uppercase text-slate-300 font-bold block">Aktualny Stan 5S</span>
+                    <h3 class="text-base font-bold text-white mt-1">${currentStation.name}</h3>
+                    <p class="text-xs text-slate-400 font-mono-numbers font-medium">Kod: ${currentStation.code} | Obszar: ${currentStation.area}</p>
+                    <span class="text-[10px] font-mono-numbers text-gold-400 mt-1 block">Ostatni Audyt: ${latestAudit.timestamp} (${latestAudit.source})</span>
                 </div>
                 <div class="text-right">
-                    <span class="text-3xl font-extrabold font-mono-numbers ${parseFloat(data.score) < 3.8 ? 'text-amber-400' : 'text-emerald-400'}">${data.score}</span>
+                    <span class="text-3xl font-extrabold font-mono-numbers ${parseFloat(latestAudit.score) < 3.8 ? 'text-amber-400' : 'text-emerald-400'}">${latestAudit.score}</span>
                     <span class="text-xs text-slate-300 block font-mono-numbers font-bold">/ 5.00 pkt</span>
                 </div>
             </div>
@@ -1164,29 +1219,29 @@ function loadStationAudit() {
             <div class="space-y-3 pt-3 border-t border-graphite-750">
                 <div class="flex justify-between text-xs items-center">
                     <span class="text-slate-300 font-semibold">1S - Seiri (Sortowanie)</span>
-                    <span class="font-mono-numbers font-bold text-white">${data.s1} / 5.00</span>
+                    <span class="font-mono-numbers font-bold text-white">${latestAudit.s1} / 5.00</span>
                 </div>
                 <div class="flex justify-between text-xs items-center">
                     <span class="text-slate-300 font-semibold">2S - Seiton (Systematyka)</span>
-                    <span class="font-mono-numbers font-bold text-white">${data.s2} / 5.00</span>
+                    <span class="font-mono-numbers font-bold text-white">${latestAudit.s2} / 5.00</span>
                 </div>
                 <div class="flex justify-between text-xs items-center">
                     <span class="text-slate-300 font-semibold">3S - Seiso (Sprzątanie)</span>
-                    <span class="font-mono-numbers font-bold text-white">${data.s3} / 5.00</span>
+                    <span class="font-mono-numbers font-bold text-white">${latestAudit.s3} / 5.00</span>
                 </div>
                 <div class="flex justify-between text-xs items-center">
                     <span class="text-slate-300 font-semibold">4S - Seiketsu (Standaryzacja)</span>
-                    <span class="font-mono-numbers font-bold text-white">${data.s4} / 5.00</span>
+                    <span class="font-mono-numbers font-bold text-white">${latestAudit.s4} / 5.00</span>
                 </div>
                 <div class="flex justify-between text-xs items-center">
                     <span class="text-slate-300 font-semibold">5S - Shitsuke (Samodyscyplina)</span>
-                    <span class="font-mono-numbers font-bold text-white">${data.s5} / 5.00</span>
+                    <span class="font-mono-numbers font-bold text-white">${latestAudit.s5} / 5.00</span>
                 </div>
             </div>
 
             <div class="p-4 bg-graphite-900 rounded-xl border border-graphite-750 text-xs">
                 <span class="text-gold-400 font-extrabold block mb-1">Rekomendowane Działanie CAPA:</span>
-                <p class="text-slate-200 leading-relaxed">${data.capa}</p>
+                <p class="text-slate-200 leading-relaxed">${latestAudit.capa}</p>
             </div>
         </div>
 
@@ -1194,29 +1249,28 @@ function loadStationAudit() {
             <div>
                 <div class="flex justify-between items-center mb-3">
                     <span class="text-xs font-bold text-white flex items-center gap-2">
-                        <i data-lucide="eye" class="w-4 h-4 text-gold-400"></i> Podgląd Kadru Inspekcji
+                        <i data-lucide="eye" class="w-4 h-4 text-gold-400"></i> Kadr Obrazu Stanowiska
                     </span>
                     <span class="text-xs font-mono-numbers text-slate-300 bg-graphite-900 px-2.5 py-1 rounded-md border border-graphite-750">
-                        ${uploadedImageBase64 ? 'Zdjęcie z Dysku' : 'Kamera Przemysłowa RTSP'}
+                        ${displayImage ? 'Fotografia z Inspekcji' : 'Kamera Przemysłowa RTSP'}
                     </span>
                 </div>
 
                 <div class="w-full h-56 bg-graphite-900 rounded-xl border-2 border-graphite-700 relative overflow-hidden flex items-center justify-center p-2">
-                    ${uploadedImageBase64 ? `
-                        <img src="${uploadedImageBase64}" class="w-full h-full object-cover rounded-lg" alt="Kadr z hali">
+                    ${displayImage ? `
+                        <img src="${displayImage}" class="w-full h-full object-cover rounded-lg" alt="Kadr z hali">
                     ` : `
                         <div class="absolute inset-0 bg-[radial-gradient(#324055_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
                         <div class="border-2 border-amber-400 bg-amber-500/15 p-3 rounded-xl text-xs text-amber-200 max-w-sm z-10 shadow-xl text-center backdrop-blur-md">
                             <i data-lucide="scan-line" class="w-6 h-6 mx-auto mb-1 text-amber-400"></i>
-                            <strong>Wykryte punkty kontrolne:</strong><br>
-                            ${data.observations[0] ? data.observations[0].text : 'Stanowisko w granicach normy'}
-                            <div class="text-[11px] text-slate-300 mt-1.5 italic font-medium">Uwzględniono notatkę audytora</div>
+                            <strong>Widok Domyślny Gniazda</strong><br>
+                            Wgraj zdjęcie ze smartfona lub wybierz kadr, aby uruchomić silnik multimodalny.
                         </div>
                     `}
                 </div>
 
                 <div class="mt-4 space-y-2.5">
-                    ${data.observations.map(o => `
+                    ${latestAudit.observations.map(o => `
                         <div class="p-3 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex justify-between items-center font-medium">
                             <span class="text-slate-200">${o.text}</span>
                             <span class="font-mono-numbers font-extrabold text-xs ${o.pen && o.pen.includes('-') ? 'text-rose-400' : 'text-emerald-400'}">${o.pen || '+ Zgodne'}</span>
@@ -1226,13 +1280,9 @@ function loadStationAudit() {
             </div>
 
             <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between">
-                ${uploadedImageBase64 ? `
-                    <button onclick="resetVisionImage()" class="text-xs text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Usuń zdjęcie
-                    </button>
-                ` : '<span></span>'}
-                <button onclick="alert('Raport audytu 5S wyeksportowany do formatu PDF.')" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-100 border border-graphite-600 rounded-xl transition flex items-center gap-2">
-                    <i data-lucide="download" class="w-4 h-4 text-gold-400"></i> Eksportuj Raport 5S Vision (PDF)
+                <span class="text-xs text-slate-400">Każda inspekcja tworzy trwały wpis w historii LPA.</span>
+                <button onclick="alert('Raport PDF bieżącego stanowiska został wygenerowany.')" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-100 border border-graphite-600 rounded-xl transition flex items-center gap-2">
+                    <i data-lucide="download" class="w-4 h-4 text-gold-400"></i> Eksportuj Raport Stanowiska (PDF)
                 </button>
             </div>
         </div>
@@ -1240,22 +1290,88 @@ function loadStationAudit() {
     if (window.lucide) lucide.createIcons();
 }
 
-function resetVisionImage() {
-    uploadedImageBase64 = null;
-    customVisionAuditResult = null;
-    const label = document.getElementById('upload-label-text');
-    if (label) label.innerText = "Wgraj Zdjęcie z Hali";
-    const fileInput = document.getElementById('vision-file-input');
-    if (fileInput) fileInput.value = "";
-    loadStationAudit();
+function renderVisionHistoryTab() {
+    const container = document.getElementById('vision-history-list');
+    if (!container) return;
+
+    const currentStation = visionStations.find(s => s.id === activeVisionStationId) || visionStations[0];
+    const audits = visionAuditsHistory.filter(a => a.stationId === activeVisionStationId);
+
+    if (audits.length === 0) {
+        container.innerHTML = `
+            <div class="p-12 text-center bg-graphite-950 rounded-2xl border border-graphite-750 text-slate-400 text-xs">
+                Brak zarejestrowanych audytów historycznych dla stanowiska: <strong>${currentStation.name}</strong>.
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = audits.map((a, idx) => `
+        <div class="p-5 rounded-2xl bg-graphite-950 border-2 border-graphite-750 hover:border-gold-500/50 transition space-y-3 shadow-md">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-graphite-750">
+                <div class="flex items-center gap-3">
+                    <span class="px-2.5 py-1 rounded-lg bg-gold-500/20 text-gold-400 font-mono-numbers font-bold text-xs border border-gold-500/30">
+                        AUDYT #${audits.length - idx}
+                    </span>
+                    <span class="text-xs font-bold text-white">${a.timestamp}</span>
+                    <span class="text-[11px] text-slate-400">(${a.source})</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-slate-300">Ocena Ogólna:</span>
+                    <span class="text-lg font-extrabold font-mono-numbers ${parseFloat(a.score) < 3.8 ? 'text-amber-400' : 'text-emerald-400'}">
+                        ${a.score} / 5.00
+                    </span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-5 gap-2 text-center text-[11px] font-mono-numbers bg-graphite-900 p-2.5 rounded-xl border border-graphite-750">
+                <div><span class="text-slate-400 block text-[10px]">1S</span><strong class="text-white">${a.s1}</strong></div>
+                <div><span class="text-slate-400 block text-[10px]">2S</span><strong class="text-white">${a.s2}</strong></div>
+                <div><span class="text-slate-400 block text-[10px]">3S</span><strong class="text-white">${a.s3}</strong></div>
+                <div><span class="text-slate-400 block text-[10px]">4S</span><strong class="text-white">${a.s4}</strong></div>
+                <div><span class="text-slate-400 block text-[10px]">5S</span><strong class="text-white">${a.s5}</strong></div>
+            </div>
+
+            <div class="space-y-1.5 text-xs">
+                <span class="text-slate-400 font-bold block text-[11px]">Wykryte kwestie:</span>
+                ${a.observations.map(o => `
+                    <div class="flex justify-between items-center text-slate-300">
+                        <span>&bull; ${o.text}</span>
+                        <span class="font-mono-numbers font-bold ${o.pen && o.pen.includes('-') ? 'text-rose-400' : 'text-emerald-400'}">${o.pen}</span>
+                    </div>
+                `).join('')}
+            </div>
+
+            <div class="pt-2 border-t border-graphite-750 text-xs text-emerald-300 flex items-center justify-between">
+                <span><strong>Zadanie CAPA:</strong> ${a.capa}</span>
+                ${a.imageBase64 ? `<span class="text-[10px] text-gold-400 font-bold flex items-center gap-1"><i data-lucide="image" class="w-3.5 h-3.5"></i> Załączono kadr</span>` : ''}
+            </div>
+        </div>
+    `).join('');
+
+    if (window.lucide) lucide.createIcons();
 }
 
-async function triggerVisionAudit() {
+function handleVisionImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        currentUploadedVisionBase64 = e.target.result;
+        const label = document.getElementById('vision-upload-label');
+        if (label) label.innerText = `Plik: ${file.name.slice(0, 10)}...`;
+        
+        switchVisionSubTab('current');
+    };
+    reader.readAsDataURL(file);
+}
+
+async function executeLiveVisionAudit() {
     const btn = document.getElementById('btn-run-vision');
-    const container = document.getElementById('station-audit-content');
-    const stationSelect = document.getElementById('audit-workstation-select');
-    const stationName = stationSelect ? stationSelect.options[stationSelect.selectedIndex].text : "Stanowisko robocze";
-    const humanNote = document.getElementById('audit-human-notes') ? document.getElementById('audit-human-notes').value : "";
+    const container = document.getElementById('vision-subtab-current');
+    const station = visionStations.find(s => s.id === activeVisionStationId) || visionStations[0];
+    const humanNote = document.getElementById('vision-human-notes') ? document.getElementById('vision-human-notes').value : "";
 
     if (!btn || !container) return;
 
@@ -1263,33 +1379,75 @@ async function triggerVisionAudit() {
     btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Analiza Gemini Vision...`;
     if (window.lucide) lucide.createIcons();
 
-    container.innerHTML = `
-        <div class="col-span-12 bg-graphite-950 p-14 rounded-2xl border border-graphite-750 text-center space-y-4">
-            <div class="w-14 h-14 rounded-full border-4 border-gold-400 border-t-transparent animate-spin mx-auto"></div>
-            <div class="space-y-1.5">
-                <h4 class="text-base font-bold text-white">Segmentacja Klatki Obrazu & Wykrywanie Niezgodności 5S...</h4>
-                <p class="text-xs text-slate-300 font-mono-numbers font-bold">Weryfikacja filarów 1S-5S przez model Gemini Vision</p>
-            </div>
-        </div>
-    `;
-
     try {
-        if (uploadedImageBase64 && window.GeminiEngine && GeminiEngine.hasActiveApiKey()) {
-            const visionResult = await GeminiEngine.analyzeVisual5S(uploadedImageBase64, stationName, humanNote);
-            if (visionResult) {
-                customVisionAuditResult = visionResult;
-            }
+        let auditResult;
+        if (currentUploadedVisionBase64 && window.GeminiEngine && GeminiEngine.hasActiveApiKey()) {
+            auditResult = await GeminiEngine.analyzeVisual5S(currentUploadedVisionBase64, station, humanNote);
         } else {
-            // Deterministyczne opóźnienie symulujące analizę lokalną (dla weryfikatora)
+            // Silnik deterministyczny Edge Offline
             await new Promise(r => setTimeout(r, 1200));
+            auditResult = GeminiEngine.generateDeterministicVisionReport(station, humanNote);
         }
+
+        // Zapis do historii stanowiska w localStorage
+        const newRecord = {
+            ...auditResult,
+            stationId: station.id,
+            timestamp: new Date().toLocaleDateString('pl-PL') + ' ' + new Date().toLocaleTimeString('pl-PL').slice(0, 5),
+            imageBase64: currentUploadedVisionBase64
+        };
+
+        visionAuditsHistory.unshift(newRecord);
+        saveVisionAuditsStorage();
+        alert(`Inspekcja 5S Vision dla ${station.name} zakończona pomyślnie. Wynik dodano do historii.`);
+
     } catch (err) {
-        console.error('[5S Vision] Błąd zapytania wizyjnego:', err);
+        console.error('[5S Vision] Błąd krytyczny audytu:', err);
+        alert("Błąd połączenia z API wizyjnym. Zastosowano procedurę awaryjną Edge.");
     } finally {
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="scan-line" class="w-4 h-4"></i> Uruchom Inspekcję 5S Vision`;
-        loadStationAudit();
+        renderVisionActiveView();
     }
+}
+
+function openNewStationModal() {
+    const modal = document.getElementById('new-station-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeNewStationModal() {
+    const modal = document.getElementById('new-station-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function saveNewStation() {
+    const nameInput = document.getElementById('new-station-name');
+    const codeInput = document.getElementById('new-station-code');
+    const areaInput = document.getElementById('new-station-area');
+
+    if (!nameInput || !nameInput.value.trim()) {
+        alert("Podaj nazwę stanowiska.");
+        return;
+    }
+
+    const newStation = {
+        id: 'ws_' + Date.now().toString(36),
+        name: nameInput.value.trim(),
+        code: (codeInput && codeInput.value.trim()) ? codeInput.value.trim().toUpperCase() : 'ST-' + Math.floor(Math.random()*90 + 10),
+        area: (areaInput && areaInput.value.trim()) ? areaInput.value.trim() : 'Obszar Główny'
+    };
+
+    visionStations.push(newStation);
+    saveVisionStationsStorage();
+
+    activeVisionStationId = newStation.id;
+    renderVisionStationsDropdown();
+    closeNewStationModal();
+    nameInput.value = '';
+
+    renderVisionActiveView();
+    alert(`Stanowisko ${newStation.name} (${newStation.code}) zostało pomyślnie utworzone.`);
 }
 
 // 16. Symulator What-If

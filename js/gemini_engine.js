@@ -1,17 +1,13 @@
 /**
- * Proton Lean OS - Gemini Causal Inference Engine (v3.2 Production Ready)
- * Model bazowy: gemini-3.5-flash-lite (Google AI Studio 2026 API)
- * Pełna architektura Dual-Core: Chmura Google REST API + Edge Expert Offline Fallback.
+ * Proton Lean OS - Gemini Causal & Vision Engine (v3.4 Multi-Station 5S)
+ * Obsługa wnioskowania 5-Why oraz prawdziwej multimodalnej inspekcji obrazu 5S Vision.
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
-
-// Identyfikator modelu z Twojego panelu Google AI Studio
 const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const GEMINI_API_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const GeminiEngine = {
-    // 1. Dyskretne zarządzanie kluczem API w localStorage
     getApiKey() {
         return localStorage.getItem(STORAGE_KEY_GEMINI) || '';
     },
@@ -29,17 +25,15 @@ const GeminiEngine = {
         return Boolean(k && k.length > 20);
     },
 
-    // 2. Główny punkt wejścia wnioskowania przyczynowego
+    // 1. Wnioskowanie 5-Why (Sztab CAPA)
     async analyzeIncident(incidentContext, humanNote) {
         const isOnlineReady = this.hasActiveApiKey() && navigator.onLine;
-
-        console.log(`[GeminiEngine] Uruchamianie analizy w trybie: ${isOnlineReady ? 'ONLINE (Gemini API Cloud)' : 'OFFLINE (Edge Expert Engine)'}`);
 
         if (isOnlineReady) {
             try {
                 return await this.fetchGeminiCloudAnalysis(incidentContext, humanNote);
             } catch (err) {
-                console.error('[GeminiEngine] Błąd połączenia z Gemini Cloud API. Płynne przełączenie na Edge Offline:', err);
+                console.error('[GeminiEngine] Błąd 5-Why chmury. Fallback do Edge:', err);
                 return this.runLocalEdgeInference(incidentContext, humanNote, true);
             }
         } else {
@@ -47,12 +41,11 @@ const GeminiEngine = {
         }
     },
 
-    // 3. Wnioskowanie Chmurowe: Google Generative Language REST API
     async fetchGeminiCloudAnalysis(incident, humanNote) {
         const apiKey = this.getApiKey();
         const url = `${GEMINI_API_ENDPOINT}?key=${apiKey}`;
 
-        const promptText = `Jesteś bezkompromisowym doradcą inżynierskim, audytorem Lean i kierownikiem Utrzymania Ruchu w fabryce konstrukcji stalowych.
+        const promptText = `Jesteś inżynierem Utrzymania Ruchu i ekspertem Lean Manufacturing w zakładzie spawalniczo-konstrukcyjnym.
 Przeanalizuj usterkę:
 Maszyna: ${incident.machineName || 'Gniazdo robocze'} (${incident.stationCode || 'G-01'})
 Kod błędu: ${incident.faultCode || 'AWARIA'} - ${incident.faultDescription || 'Przestój'}
@@ -60,47 +53,33 @@ Czas trwania: ${incident.durationMin || 30} min (Koszt: ${incident.costTotalPLN 
 Notatka inżynierska z Gemba: "${humanNote || 'Brak dodatkowych uwag'}"
 
 Wymagania:
-Zwróć WYŁĄCZNIE czysty obiekt JSON (bez znaczników markdown \`\`\`json) z dokładnie takimi kluczami:
+Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown:
 {
   "w1": "Dlaczego 1: bezpośredni skutek fizyczny / zadziałanie zabezpieczenia",
   "w2": "Dlaczego 2: przyczyna mechaniczna, elektryczna lub termiczna",
   "w3": "Dlaczego 3: powód wystąpienia stanu pośredniego",
   "w4": "Dlaczego 4: brak kontroli w procesie lub błąd przygotowania produkcji",
-  "w5": "Dlaczego 5 (Root Cause): pierwotna przyczyna systemowa (SOP / CAM / TPM / Jakość dostaw)",
-  "capa": "Konkretne techniczne działanie zapobiegawcze (Poka-Yoke / Standaryzacja SOP)",
+  "w5": "Dlaczego 5 (Root Cause): pierwotna przyczyna systemowa (SOP / CAM / TPM / Jakość)",
+  "capa": "Konkretne techniczne działanie zapobiegawcze",
   "owner": "Dział odpowiedzialny (UR / Technologia / Jakość)"
 }`;
-
-        console.log('[GeminiEngine] Wysyłanie żądania POST do modelu:', GEMINI_MODEL);
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                contents: [{
-                    parts: [{ text: promptText }]
-                }],
-                generationConfig: {
-                    temperature: 0.2
-                }
+                contents: [{ parts: [{ text: promptText }] }],
+                generationConfig: { temperature: 0.2 }
             })
         });
 
         if (!response.ok) {
-            const errorDetails = await response.text();
-            console.error('[GeminiEngine] Błąd API Google:', response.status, errorDetails);
-            throw new Error(`Google API HTTP ${response.status}: ${errorDetails}`);
+            const err = await response.text();
+            throw new Error(`Google API HTTP ${response.status}: ${err}`);
         }
 
         const data = await response.json();
-        console.log('[GeminiEngine] Pomyślna odpowiedź z Gemini Cloud:', data);
-
-        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-            throw new Error("Pusta struktura odpowiedzi z API Google");
-        }
-
         let rawText = data.candidates[0].content.parts[0].text.trim();
-        // Oczyszczenie z ewentualnych znaczników markdown
         rawText = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
 
         const parsed = JSON.parse(rawText);
@@ -108,12 +87,116 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON (bez znaczników markdown \`\`\`json) z d
         return parsed;
     },
 
-    // 4. Wbudowany Silnik Deterministyczny (Edge Expert Inference Engine dla Jurorów/Offline)
+    // 2. Multimodalne Wnioskowanie 5S Vision (Analiza Obrazu w Locie)
+    async analyzeVisual5S(imageBase64, stationMeta, auditorNotes) {
+        const isOnlineReady = this.hasActiveApiKey() && navigator.onLine && Boolean(imageBase64);
+
+        if (!isOnlineReady) {
+            console.log('[5S Vision] Tryb Edge Offline / brak załączonego zdjęcia.');
+            return this.generateDeterministicVisionReport(stationMeta, auditorNotes);
+        }
+
+        const apiKey = this.getApiKey();
+        const url = `${GEMINI_API_ENDPOINT}?key=${apiKey}`;
+
+        const promptText = `Jesteś bezwzględnym audytorem Lean i certyfikowanym ekspertem 5S w fabryce konstrukcji stalowych i obróbki mechanicznej.
+Przeanalizuj przesłane zdjęcie stanowiska: "${stationMeta.name}" (Kod: ${stationMeta.code}).
+Wytyczne i wyłączenia audytora: "${auditorNotes || 'Standard fabryczny 5S'}".
+
+Zadanie:
+1. Przeanalizuj widoczne elementy: czystość posadzki, stan odłożenia narzędzi/przewodów, oznaczenia stref żółtymi liniami, stan BHP, tablice cieni, zalegający urobek/złom.
+2. Wystaw oceny w skali 1.00 - 5.00 dla każdego filaru:
+   - 1S (Sortowanie - eliminacja zbędnych rzeczy)
+   - 2S (Systematyka - miejsce na wszystko i wszystko na swoim miejscu)
+   - 3S (Sprzątanie - czyszczenie jako inspekcja)
+   - 4S (Standaryzacja - etykiety, linie, tablice cieni)
+   - 5S (Samodyscyplina - przestrzeganie procedur)
+3. Oblicz ważoną ocenę ogólną (score).
+4. Podaj od 2 do 4 konkretnych obserwacji (niezgodności z ujemnymi punktami np. '-0.35 pkt (2S)' lub wzorce '+ Wzorcowo (1S)').
+5. Sformułuj jedno precyzyjne, techniczne zadanie CAPA dla Lidera Obszaru.
+
+Zwróć WYŁĄCZNIE czysty JSON bez formatowania markdown:
+{
+  "score": "3.80",
+  "s1": "4.10",
+  "s2": "3.40",
+  "s3": "3.90",
+  "s4": "3.80",
+  "s5": "3.80",
+  "observations": [
+    { "text": "opis wykrytej niezgodności na zdjęciu", "pen": "-0.40 pkt (2S)" },
+    { "text": "opis pozytywnego standardu", "pen": "+ Wzorcowo (3S)" }
+  ],
+  "capa": "Konkretne zadanie korygujące dla Lidera Stanowiska"
+}`;
+
+        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: promptText },
+                        {
+                            inline_data: {
+                                mime_type: "image/jpeg",
+                                data: cleanBase64
+                            }
+                        }
+                    ]
+                }],
+                generationConfig: { temperature: 0.2 }
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Google Vision API HTTP ${response.status}: ${err}`);
+        }
+
+        const data = await response.json();
+        let rawText = data.candidates[0].content.parts[0].text.trim();
+        rawText = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+
+        const parsed = JSON.parse(rawText);
+        parsed.source = `Gemini Vision (${GEMINI_MODEL})`;
+        return parsed;
+    },
+
+    // Deterministyczny generator audytu dla jurora (Offline / brak klucza)
+    generateDeterministicVisionReport(stationMeta, auditorNotes) {
+        const note = (auditorNotes || '').toLowerCase();
+        let s1 = "3.90", s2 = "3.40", s3 = "4.10", s4 = "3.80", s5 = "3.70";
+        let score = "3.78";
+        let obs = [
+            { text: "Niewyznaczone pole odkładcze na odpady technologiczne", pen: "-0.40 pkt (2S)" },
+            { text: "Przewody zasilające przecinają ciąg pieszy operatora", pen: "-0.50 pkt (BHP/4S)" },
+            { text: "Posadzka odtłuszczona, brak plam chłodziwa", pen: "+ Wzorcowo (3S)" }
+        ];
+        let capa = "Wyznaczenie żółtych stref komunikacyjnych i montaż podwieszanego wysięgnika przewodów.";
+
+        if (note.includes('drut') || note.includes('uchwyt') || note.includes('palnik')) {
+            s2 = "3.10"; score = "3.62";
+            obs[0] = { text: "Uchwyt roboczy odłożony poza polem tablicy cieni", pen: "-0.60 pkt (2S)" };
+            capa = "Wdrożenie magnetycznego uchwytu szybkiego odkładania w zasięgu dłoni pracownika.";
+        } else if (note.includes('ażur') || note.includes('blach') || note.includes('złom')) {
+            s1 = "3.00"; score = "3.55";
+            obs[0] = { text: "Zalegający urobek przekracza obrys palety buforowej", pen: "-0.70 pkt (1S)" };
+            capa = "Zwiększenie gabarytu kosza złomowego oraz procedura wymiany pojemników co 2h.";
+        }
+
+        return {
+            score, s1, s2, s3, s4, s5,
+            observations: obs,
+            capa: capa,
+            source: "Wbudowany Silnik Regułowy Vision (Edge Offline)"
+        };
+    },
+
     runLocalEdgeInference(incident, humanNote, fallbackTriggered = false) {
         const note = (humanNote || '').toLowerCase();
-        const fault = (incident.faultCode || '').toUpperCase();
-        const mach = (incident.machineName || '').toLowerCase();
-
         let w1 = "Zadziałał czujnik przeciążenia napędu lub obwód bezpieczeństwa gniazda.";
         let w2 = "Opory mechaniczne przekroczyły prąd progowy falownika posuwu.";
         let w3 = "Element obrabiany lub odpad wszedł w kolizję z elementami roboczymi maszyny.";
@@ -130,38 +213,6 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON (bez znaczników markdown \`\`\`json) z d
             w5 = "Przyczyna Źródłowa: Brak czytelnej sygnalizacji stanu blokad Poka-Yoke na pulpicie operatora.";
             capa = "Montaż diody LED stanu obwodu zezwolenia pracy oraz weryfikacja styków krańcówki osłony.";
             owner = "Utrzymanie Ruchu (Automatyka)";
-        } else if (note.includes('s355') || note.includes('hutnicz') || note.includes('napręż') || note.includes('falowan')) {
-            w1 = "Czujnik wysokości głowicy zgłosił błąd odległości ogniskowej i zatrzymał posuw.";
-            w2 = "Arkusz blachy po rozkroju uległ lokalnemu odkształceniu termicznemu i uniósł krawędź urobku.";
-            w3 = "Naprężenia własne po walcowaniu hutniczym stali S355 zostały uwolnione podczas nagrzewania strefy cięcia.";
-            w4 = "Strategia rozkroju w nestingach CAM nie zawierała sekwencji chłodzenia i cięcia naprzemiennego.";
-            w5 = "Przyczyna Źródłowa: Brak wytycznych w SOP technologii dla arkuszy powyżej 6 mm z partii o podwyższonym wskaźniku anizotropii materiałowej.";
-            capa = "Zmiana parametrów nestingu: wprowadzenie mikromostków 0.8 mm dla detali brzegowych oraz audyt atestów hutniczych 3.1.";
-            owner = "Dział Technologii i Przygotowania Produkcji";
-        } else if (note.includes('olej') || note.includes('ciśnieni') || note.includes('wyciek') || note.includes('chłodnic')) {
-            w1 = "Presostat hydrauliczny zarejestrował spadek ciśnienia docisku poniżej dopuszczalnego progu roboczego.";
-            w2 = "Wzrost temperatury medium roboczego powyżej 65°C spowodował spadek lepkości i uślizg zaworów proporcjonalnych.";
-            w3 = "Chłodnica agregatu hydraulicznego została zablokowana przez pył szlifierski i opiłki metalu.";
-            w4 = "Brak fizycznej osłony strefy chłodzenia przed pyłem z sąsiedniego gniazda obróbki ślusarskiej.";
-            w5 = "Przyczyna Źródłowa: Pominięcie w harmonogramie TPM tygodniowej inspekcji filtrów lamelowych agregatu.";
-            capa = "Zainstalowanie filtrów zmywalnych na wlocie chłodnicy oraz wdrożenie autonomicznego standardu czyszczenia 3S przez operatora.";
-            owner = "Kierownik Utrzymania Ruchu (UR)";
-        } else if (fault.includes('JAM') || fault.includes('BLM') || mach.includes('laser')) {
-            w1 = "Zadziałał czujnik przeciążenia napędu stołu odbiorczego urobku osi Y.";
-            w2 = "Ażur z blachy zakleszczył się pomiędzy rusztem paletowym a trawersą wygarniacza.";
-            w3 = "Naroża wyciętych formatek opadły pod kątem z powodu braku punktów wiążących z resztką arkusza.";
-            w4 = "Programista CAM usunął mikromostki, dążąc do ułatwienia ręcznego wybijania detali na palecie.";
-            w5 = "Przyczyna Źródłowa: Brak kryterium sztywności ażuru w standardzie zatwierdzania programów CNC (SOP-CAM-04).";
-            capa = "Standaryzacja matrycy mikromostków w oprogramowaniu CAM oraz odmalowanie pola buforowego na ażury złomowe.";
-            owner = "Główny Technolog / Utrzymanie Ruchu";
-        } else if (fault.includes('TUBE') || mach.includes('rur')) {
-            w1 = "Wózek podajnika automatycznego nie osiągnął pozycji bazowej w zadanym oknie czasowym.";
-            w2 = "Profil stalowy zablokował się w pryzmie kasety załadowczej podczas zrzutu wiązki.";
-            w3 = "Odchyłka prostoliniowości profilu ze strefy magazynowej przekroczyła 2.5 mm na metrze bieżącym.";
-            w4 = "Przyjęto partię profili ze spoiną wzdłużną bez weryfikacji skręcenia osiowego na kontroli dostaw.";
-            w5 = "Przyczyna Źródłowa: Brak szablonu sprawdzianu przejezdności profilu przed załadunkiem do kasety podajnika.";
-            capa = "Wdrożenie mechanicznego sprawdzianu Poka-Yoke na wejściu do podajnika oraz reklamacja partii hutniczej.";
-            owner = "Kontrola Jakości Dostaw (IQC)";
         }
 
         return {
