@@ -115,7 +115,7 @@
                     <i data-lucide="shield-alert" class="w-4 h-4 text-gold-400"></i> Sztab 5-Why (CAPA)
                 </button>
                 <button onclick="switchTab('audit5s')" id="nav-audit5s" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
-                    <i data-lucide="scan" class="w-4 h-4 text-gold-400"></i> Audyt Wizualny 5S
+                    <i data-lucide="scan" class="w-4 h-4 text-gold-400"></i> 5S Vision
                 </button>
                 <button onclick="switchTab('whatif')" id="nav-whatif" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
                     <i data-lucide="sliders" class="w-4 h-4 text-gold-400"></i> Symulator What-If
@@ -627,42 +627,54 @@
         </div>
     </main>
 
-    <!-- TAB 3: AUDYT WIZUALNY 5S -->
+   <!-- TAB 3: 5S VISION (MULTIMODAL AI) -->
     <main id="tab-audit5s" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
+            
             <div class="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
                 <div>
                     <div class="flex items-center gap-3">
                         <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="scan" class="w-6 h-6"></i></span>
-                        <h2 class="text-lg font-bold text-white">Wizualny Audyt 5S Stanowisk Pracy (Gemini Multimodal Vision)</h2>
+                        <h2 class="text-lg font-bold text-white">Moduł 5S Vision (Gemini Multimodal AI)</h2>
                     </div>
-                    <p class="text-xs text-slate-300 mt-1">Przeanalizuj zgodność w skali 1.00 – 5.00 z uwzględnieniem wskazówek i wyjątków audytora</p>
+                    <p class="text-xs text-slate-300 mt-1">Wizualna inspekcja stanowisk roboczych pod kątem standardów 1S-5S z kamer przemysłowych lub przesłanego zdjęcia.</p>
                 </div>
 
-                <div class="flex items-center gap-2.5">
-                    <span class="text-xs font-bold text-slate-300 uppercase">Stanowisko:</span>
-                    <select id="audit-workstation-select" onchange="loadStationAudit()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
-                        <option value="ws_weld" selected>Spawanie Manualne MIG/MAG (Stanowisko S-02)</option>
-                        <option value="ws_laser">Laser BLM Płytowy CNC (Strefa Rozładunku L-01)</option>
-                        <option value="ws_saw">Piła Tarczowa do Metalu (Gniazdo P-01)</option>
-                        <option value="ws_bender">Giętarka do Rur CNC (Strefa Matryc G-01)</option>
-                        <option value="ws_final">Stanowisko Montażu Końcowego (M-01)</option>
-                    </select>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-300 uppercase">Stanowisko:</span>
+                        <select id="audit-workstation-select" onchange="loadStationAudit()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
+                            <option value="ws_weld" selected>Spawanie Manualne MIG/MAG (Stanowisko S-02)</option>
+                            <option value="ws_laser">Laser BLM Płytowy CNC (Strefa Rozładunku L-01)</option>
+                            <option value="ws_saw">Piła Tarczowa do Metalu (Gniazdo P-01)</option>
+                            <option value="ws_bender">Giętarka do Rur CNC (Strefa Matryc G-01)</option>
+                            <option value="ws_final">Stanowisko Montażu Końcowego (M-01)</option>
+                        </select>
+                    </div>
+
+                    <!-- Przycisk wczytania własnego zdjęcia -->
+                    <label class="cursor-pointer px-4 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-gold-400 border-2 border-gold-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-2 shadow-sm">
+                        <i data-lucide="camera" class="w-4 h-4"></i>
+                        <span id="upload-label-text">Wgraj Zdjęcie z Hali</span>
+                        <input type="file" id="vision-file-input" accept="image/*" class="hidden" onchange="handleVisionImageUpload(event)">
+                    </label>
                 </div>
             </div>
 
+            <!-- Panel wprowadzania uwag audytora -->
             <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 flex flex-col md:flex-row items-stretch md:items-center gap-4">
                 <div class="flex-1 space-y-1.5">
                     <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
-                        <i data-lucide="eye" class="w-4 h-4"></i> Wskazówki & Ograniczenia dla Agenta Wizyjnego:
+                        <i data-lucide="eye" class="w-4 h-4"></i> Wytyczne & Wyłączenia dla Modelu Wizyjnego:
                     </label>
-                    <input type="text" id="audit-human-notes" value="Zwróć uwagę na drożność odciągów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-900 border-2 border-graphite-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
+                    <input type="text" id="audit-human-notes" value="Zwróć uwagę na odłożenie przewodów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-900 border-2 border-graphite-750 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
                 </div>
                 <button onclick="triggerVisionAudit()" id="btn-run-vision" class="px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0 self-end md:self-auto">
-                    <i data-lucide="scan-line" class="w-4 h-4"></i> Wykonaj Audyt Obrazu AI
+                    <i data-lucide="scan-line" class="w-4 h-4"></i> Uruchom Inspekcję 5S Vision
                 </button>
             </div>
 
+            <!-- Obszar wyników audytu -->
             <div id="station-audit-content" class="grid grid-cols-1 lg:grid-cols-12 gap-6"></div>
         </div>
     </main>

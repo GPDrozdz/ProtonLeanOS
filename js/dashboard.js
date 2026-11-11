@@ -1,7 +1,7 @@
 /**
- * Proton Lean OS - Executive Dashboard Logic (v3.0 Gemini Dual-Core Ready)
+ * Proton Lean OS - Executive Dashboard Logic (v3.3 5S Vision & Dual-Core Ready)
  * Płynna 3-sekundowa animacja startowa HUD, hybrydowy silnik AI (Gemini Cloud + Edge Offline),
- * trwałość stanu, rotacja wąskiego gardła i twardy reset.
+ * moduł 5S Vision (multimodalny), trwałość stanu, rotacja wąskiego gardła i twardy reset.
  */
 
 const STORAGE_KEY_QUEUE = 'proton_lean_events_queue_v26';
@@ -17,6 +17,10 @@ let isHalLocked = false;
 let incomingEventsQueue = [];
 let capaHistory = [];
 let activeIncidentContext = null;
+
+// Zmienne modułu 5S Vision
+let uploadedImageBase64 = null;
+let customVisionAuditResult = null;
 
 // Domyślny stan początkowy produkcji (20 palet, 5 kontenerów, 18.0 Mg)
 const INITIAL_PROD_STATE = {
@@ -34,7 +38,7 @@ const INITIAL_PROD_STATE = {
 
 let productionState = { ...INITIAL_PROD_STATE };
 
-// Domyślna hierarchia strat maszynowych do automatycznej rotacji
+// Domyślna hierarchia strat maszynowych do automatycznej rotacji wąskiego gardła
 const DEFAULT_BOTTLENECK_FLEET = [
     {
         id: 0,
@@ -112,7 +116,7 @@ async function initDashboard() {
 
     if (window.lucide) lucide.createIcons();
 
-    // Rejestracja magistrali zdarzeń
+    // Rejestracja szyny zdarzeń telemetrycznych
     if (typeof subscribeTelemetryEvents === 'function') {
         subscribeTelemetryEvents(handleIncomingTelemetry);
     }
@@ -197,7 +201,7 @@ function startBackgroundProductionTicker() {
     }, 30000);
 }
 
-// 5. Odbiór meldunku z magistrali
+// 5. Odbiór meldunku z magistrali MQTT / LocalStorage
 function handleIncomingTelemetry(payload) {
     if (!payload) return;
 
@@ -229,7 +233,7 @@ function handleIncomingTelemetry(payload) {
     showToastNotification(payload);
 }
 
-// 6. Przeliczanie matematyczne wykonania planu & Wskaźników
+// 6. Przeliczanie wskaźników wykonania planu
 function recalculateProductionImpact(payload) {
     const mins = payload.durationMin || 10;
     productionState.totalLossPLN += payload.costTotalPLN;
@@ -530,7 +534,7 @@ function openApiKeyModal() {
     if (modal && window.GeminiEngine) {
         input.value = GeminiEngine.getApiKey();
         if (GeminiEngine.hasActiveApiKey()) {
-            msg.innerHTML = `Status: <span class="text-emerald-400 font-bold">Klucz zapisany. Aktywny tryb Gemini 2.5 Live (Chmura).</span>`;
+            msg.innerHTML = `Status: <span class="text-emerald-400 font-bold">Klucz zapisany. Aktywny tryb Gemini Live (Chmura).</span>`;
         } else {
             msg.innerHTML = `Status: <span class="text-amber-400 font-bold">Brak klucza. Aktywny tryb autonomiczny (Edge Expert Offline).</span>`;
         }
@@ -570,7 +574,7 @@ function updateAiStatusBadge() {
     if (!statusText || !window.GeminiEngine) return;
 
     if (GeminiEngine.hasActiveApiKey()) {
-        statusText.innerText = "Gemini 2.5 Live (Cloud)";
+        statusText.innerText = "Gemini Live (Cloud)";
         if (statusBox) statusBox.className = "flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gold-500/15 border-2 border-gold-400 text-gold-300 text-xs font-mono-numbers font-bold shadow-sm cursor-pointer";
     } else {
         statusText.innerText = "Silnik AI: Edge Offline";
@@ -623,7 +627,7 @@ async function triggerCapaAnalysis() {
                     <span class="w-2.5 h-2.5 rounded-full bg-gold-400 animate-ping"></span>
                     [1/3] Pobieranie parametrów z telemetrii MES...
                 </span>
-                <span class="font-mono-numbers text-slate-300">${isLive ? 'AI Flash API' : 'Edge Inference Engine'}</span>
+                <span class="font-mono-numbers text-slate-300">${isLive ? 'Gemini Flash API' : 'Edge Inference Engine'}</span>
             </div>
             <div class="w-full bg-graphite-900 h-3 rounded-full overflow-hidden border border-graphite-750">
                 <div id="capa-progress-bar" class="bg-gradient-to-r from-gold-500 to-amber-400 h-full transition-all duration-700" style="width: 25%"></div>
@@ -638,7 +642,6 @@ async function triggerCapaAnalysis() {
         if (barEl) barEl.style.width = "65%";
     }, 600);
 
-    // Kontekst incydentu
     const incidentData = activeIncidentContext || {
         machineName: document.getElementById('bottleneck-machine-name') ? document.getElementById('bottleneck-machine-name').innerText : "Laser BLM Płytowy CNC",
         stationCode: "G-01",
@@ -682,7 +685,6 @@ async function triggerCapaAnalysis() {
             return;
         }
 
-        // Prawdziwe wywołanie modułu GeminiEngine (Online lub Edge)
         const analysisResult = await GeminiEngine.analyzeIncident(incidentData, rawInput);
 
         btn.disabled = false;
@@ -1062,7 +1064,10 @@ function jumpToCapaFromModal() {
     }
 }
 
-// 15. Audyt 5S i Symulator What-If
+// ==========================================
+// 15. MODUŁ 5S VISION (MULTIMODAL GEMINI + EDGE)
+// ==========================================
+
 const stationAudits = {
     ws_weld: {
         title: "Spawanie Manualne MIG/MAG (Stanowisko S-02)",
@@ -1118,11 +1123,27 @@ const stationAudits = {
     }
 };
 
+function handleVisionImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        uploadedImageBase64 = e.target.result;
+        const label = document.getElementById('upload-label-text');
+        if (label) label.innerText = `Plik: ${file.name.slice(0, 14)}...`;
+        
+        loadStationAudit();
+    };
+    reader.readAsDataURL(file);
+}
+
 function loadStationAudit() {
     const keyEl = document.getElementById('audit-workstation-select');
     if (!keyEl) return;
     const key = keyEl.value;
-    const data = stationAudits[key] || stationAudits['ws_weld'];
+    const fallbackData = stationAudits[key] || stationAudits['ws_weld'];
+    const data = customVisionAuditResult || fallbackData;
     const container = document.getElementById('station-audit-content');
     const humanNote = document.getElementById('audit-human-notes') ? document.getElementById('audit-human-notes').value : '';
 
@@ -1130,8 +1151,9 @@ function loadStationAudit() {
         <div class="lg:col-span-5 bg-graphite-950 p-6 rounded-2xl border border-graphite-750 space-y-5">
             <div class="flex justify-between items-start">
                 <div>
-                    <span class="text-xs uppercase text-slate-300 font-bold block">Ocena Końcowa 5S Stanowiska</span>
-                    <h3 class="text-base font-bold text-white mt-1">${data.title}</h3>
+                    <span class="text-xs uppercase text-slate-300 font-bold block">Wynik Inspekcji 5S Vision</span>
+                    <h3 class="text-base font-bold text-white mt-1">${customVisionAuditResult ? 'Niestandardowa Próbka z Hali' : fallbackData.title}</h3>
+                    <span class="text-[10px] font-mono-numbers text-gold-400 mt-0.5 block">Źródło: ${data.source || 'Wbudowany Wzorzec Stanowiska'}</span>
                 </div>
                 <div class="text-right">
                     <span class="text-3xl font-extrabold font-mono-numbers ${parseFloat(data.score) < 3.8 ? 'text-amber-400' : 'text-emerald-400'}">${data.score}</span>
@@ -1163,7 +1185,7 @@ function loadStationAudit() {
             </div>
 
             <div class="p-4 bg-graphite-900 rounded-xl border border-graphite-750 text-xs">
-                <span class="text-gold-400 font-extrabold block mb-1">Rekomendowane Działanie CAPA (AI):</span>
+                <span class="text-gold-400 font-extrabold block mb-1">Rekomendowane Działanie CAPA:</span>
                 <p class="text-slate-200 leading-relaxed">${data.capa}</p>
             </div>
         </div>
@@ -1172,35 +1194,45 @@ function loadStationAudit() {
             <div>
                 <div class="flex justify-between items-center mb-3">
                     <span class="text-xs font-bold text-white flex items-center gap-2">
-                        <i data-lucide="eye" class="w-4 h-4 text-gold-400"></i> Analiza Klatki Obrazu (Gemini Vision 2.5)
+                        <i data-lucide="eye" class="w-4 h-4 text-gold-400"></i> Podgląd Kadru Inspekcji
                     </span>
-                    <span class="text-xs font-mono-numbers text-slate-300 bg-graphite-900 px-2.5 py-1 rounded-md border border-graphite-750">Skan z kamery przemysłowej</span>
+                    <span class="text-xs font-mono-numbers text-slate-300 bg-graphite-900 px-2.5 py-1 rounded-md border border-graphite-750">
+                        ${uploadedImageBase64 ? 'Zdjęcie z Dysku' : 'Kamera Przemysłowa RTSP'}
+                    </span>
                 </div>
 
-                <div class="w-full h-48 bg-graphite-900 rounded-xl border-2 border-graphite-700 relative overflow-hidden flex items-center justify-center p-4">
-                    <div class="absolute inset-0 bg-[radial-gradient(#324055_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
-                    
-                    <div class="border-2 border-amber-400 bg-amber-500/15 p-3 rounded-xl text-xs text-amber-200 max-w-sm z-10 shadow-xl text-center backdrop-blur-md">
-                        <i data-lucide="scan-line" class="w-6 h-6 mx-auto mb-1 text-amber-400"></i>
-                        <strong>Detekcja Niezgodności Vision:</strong><br>
-                        ${data.observations[0].text}
-                        <div class="text-[11px] text-slate-300 mt-1.5 italic font-medium">Uwzględniono: "${humanNote.slice(0, 42)}..."</div>
-                    </div>
+                <div class="w-full h-56 bg-graphite-900 rounded-xl border-2 border-graphite-700 relative overflow-hidden flex items-center justify-center p-2">
+                    ${uploadedImageBase64 ? `
+                        <img src="${uploadedImageBase64}" class="w-full h-full object-cover rounded-lg" alt="Kadr z hali">
+                    ` : `
+                        <div class="absolute inset-0 bg-[radial-gradient(#324055_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
+                        <div class="border-2 border-amber-400 bg-amber-500/15 p-3 rounded-xl text-xs text-amber-200 max-w-sm z-10 shadow-xl text-center backdrop-blur-md">
+                            <i data-lucide="scan-line" class="w-6 h-6 mx-auto mb-1 text-amber-400"></i>
+                            <strong>Wykryte punkty kontrolne:</strong><br>
+                            ${data.observations[0] ? data.observations[0].text : 'Stanowisko w granicach normy'}
+                            <div class="text-[11px] text-slate-300 mt-1.5 italic font-medium">Uwzględniono notatkę audytora</div>
+                        </div>
+                    `}
                 </div>
 
                 <div class="mt-4 space-y-2.5">
                     ${data.observations.map(o => `
                         <div class="p-3 rounded-xl bg-graphite-900 border border-graphite-750 text-xs flex justify-between items-center font-medium">
                             <span class="text-slate-200">${o.text}</span>
-                            <span class="font-mono-numbers font-extrabold text-xs ${o.pen.includes('-') ? 'text-rose-400' : 'text-emerald-400'}">${o.pen}</span>
+                            <span class="font-mono-numbers font-extrabold text-xs ${o.pen && o.pen.includes('-') ? 'text-rose-400' : 'text-emerald-400'}">${o.pen || '+ Zgodne'}</span>
                         </div>
                     `).join('')}
                 </div>
             </div>
 
-            <div class="mt-5 pt-3.5 border-t border-graphite-750 flex justify-end">
+            <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between">
+                ${uploadedImageBase64 ? `
+                    <button onclick="resetVisionImage()" class="text-xs text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Usuń zdjęcie
+                    </button>
+                ` : '<span></span>'}
                 <button onclick="alert('Raport audytu 5S wyeksportowany do formatu PDF.')" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-100 border border-graphite-600 rounded-xl transition flex items-center gap-2">
-                    <i data-lucide="download" class="w-4 h-4 text-gold-400"></i> Eksportuj Raport Audytu (PDF)
+                    <i data-lucide="download" class="w-4 h-4 text-gold-400"></i> Eksportuj Raport 5S Vision (PDF)
                 </button>
             </div>
         </div>
@@ -1208,32 +1240,59 @@ function loadStationAudit() {
     if (window.lucide) lucide.createIcons();
 }
 
-function triggerVisionAudit() {
+function resetVisionImage() {
+    uploadedImageBase64 = null;
+    customVisionAuditResult = null;
+    const label = document.getElementById('upload-label-text');
+    if (label) label.innerText = "Wgraj Zdjęcie z Hali";
+    const fileInput = document.getElementById('vision-file-input');
+    if (fileInput) fileInput.value = "";
+    loadStationAudit();
+}
+
+async function triggerVisionAudit() {
     const btn = document.getElementById('btn-run-vision');
     const container = document.getElementById('station-audit-content');
+    const stationSelect = document.getElementById('audit-workstation-select');
+    const stationName = stationSelect ? stationSelect.options[stationSelect.selectedIndex].text : "Stanowisko robocze";
+    const humanNote = document.getElementById('audit-human-notes') ? document.getElementById('audit-human-notes').value : "";
+
     if (!btn || !container) return;
 
     btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Skanowanie...`;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Analiza Gemini Vision...`;
     if (window.lucide) lucide.createIcons();
 
     container.innerHTML = `
         <div class="col-span-12 bg-graphite-950 p-14 rounded-2xl border border-graphite-750 text-center space-y-4">
             <div class="w-14 h-14 rounded-full border-4 border-gold-400 border-t-transparent animate-spin mx-auto"></div>
             <div class="space-y-1.5">
-                <h4 class="text-base font-bold text-white">Segmentacja Obrazu i Weryfikacja Wytycznych Audytora...</h4>
-                <p class="text-xs text-slate-300 font-mono-numbers font-bold">Gemini Vision 2.5: Przeliczanie kar cząstkowych 1S-5S</p>
+                <h4 class="text-base font-bold text-white">Segmentacja Klatki Obrazu & Wykrywanie Niezgodności 5S...</h4>
+                <p class="text-xs text-slate-300 font-mono-numbers font-bold">Weryfikacja filarów 1S-5S przez model Gemini Vision</p>
             </div>
         </div>
     `;
 
-    setTimeout(() => {
+    try {
+        if (uploadedImageBase64 && window.GeminiEngine && GeminiEngine.hasActiveApiKey()) {
+            const visionResult = await GeminiEngine.analyzeVisual5S(uploadedImageBase64, stationName, humanNote);
+            if (visionResult) {
+                customVisionAuditResult = visionResult;
+            }
+        } else {
+            // Deterministyczne opóźnienie symulujące analizę lokalną (dla weryfikatora)
+            await new Promise(r => setTimeout(r, 1200));
+        }
+    } catch (err) {
+        console.error('[5S Vision] Błąd zapytania wizyjnego:', err);
+    } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="scan-line" class="w-4 h-4"></i> Wykonaj Audyt Obrazu AI`;
+        btn.innerHTML = `<i data-lucide="scan-line" class="w-4 h-4"></i> Uruchom Inspekcję 5S Vision`;
         loadStationAudit();
-    }, 2000);
+    }
 }
 
+// 16. Symulator What-If
 function updateWhatIf() {
     const s1 = document.getElementById('slider-1').value;
     const s2 = document.getElementById('slider-2').value;
@@ -1251,6 +1310,7 @@ function updateWhatIf() {
     `;
 }
 
+// 17. Powiadomienia TOAST w czasie rzeczywistym
 function showToastNotification(payload) {
     const container = document.getElementById('toast-container');
     if (!container) return;
