@@ -623,7 +623,7 @@ async function triggerCapaAnalysis() {
                     <span class="w-2.5 h-2.5 rounded-full bg-gold-400 animate-ping"></span>
                     [1/3] Pobieranie parametrów z telemetrii MES...
                 </span>
-                <span class="font-mono-numbers text-slate-300">${isLive ? 'Gemini 2.5 Flash API' : 'Edge Inference Engine'}</span>
+                <span class="font-mono-numbers text-slate-300">${isLive ? 'AI Flash API' : 'Edge Inference Engine'}</span>
             </div>
             <div class="w-full bg-graphite-900 h-3 rounded-full overflow-hidden border border-graphite-750">
                 <div id="capa-progress-bar" class="bg-gradient-to-r from-gold-500 to-amber-400 h-full transition-all duration-700" style="width: 25%"></div>
