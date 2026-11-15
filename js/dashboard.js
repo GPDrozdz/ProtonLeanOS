@@ -1,21 +1,23 @@
 /**
- * Proton Lean OS - Główny Kontroler Kokpitu i Silnik Osi Czasu (v4.0 Live Flow)
- * - 30-dniowa deterministyczna historia "od teraz wstecz" (zero danych z przyszłości)
- * - Auto-detekcja bieżącej zmiany (I / II / III) z zegara systemowego
- * - Syntetyczna kolejka produkcyjna na żywo (Wykonanie / Cel + spływ partii)
- * - Sortowanie gniazd od najgorszego do najlepszego OEE + mini-wykresy trendu + zwijanie
- * - Animowany pasek postępu wnioskowania 5-Why oraz wymuszona animacja pierścieni HUD
+ * Proton Lean OS - Główny Kontroler Kokpitu i Silnik Osi Czasu (v4.1 Continuous 24/7)
+ * - Ruch ciągły 7 dni w tygodniu (brak blokady sobót i niedziel)
+ * - Plan produkcyjny: 54 palety + 2 kontenery / dobę (18 palet + 0.67 kontenera / zmianę)
+ * - Procentowy wskaźnik obrobienia każdego z 2 kontenerów dziennych + dolny pasek % planu
+ * - Żywa kolejka produkcyjna powoli zwiększająca produkcję w czasie rzeczywistym
  */
 
 const STORAGE_KEYS = {
-    HISTORY_BASELINE: 'proton_history_baseline_v40',
-    LIVE_5S_AUDITS: 'proton_5s_live_audits_v40',
-    CUSTOM_STATIONS: 'proton_5s_custom_stations_v40',
-    APPROVED_CAPAS: 'proton_approved_capas_v40',
-    PUSHPULL_TASKS: 'proton_pushpull_tasks_v40'
+    HISTORY_BASELINE: 'proton_history_baseline_v41',
+    LIVE_5S_AUDITS: 'proton_5s_live_audits_v41',
+    CUSTOM_STATIONS: 'proton_5s_custom_stations_v41',
+    APPROVED_CAPAS: 'proton_approved_capas_v41',
+    PUSHPULL_TASKS: 'proton_pushpull_tasks_v41'
 };
 
-// Katalog 8 gniazd ciągu technologicznego
+// Stałe normatywne planu produkcji (24/7)
+const DAILY_PLAN_PALETTES = 54;      // 54 palety / dobę = 18 palet / zmianę
+const DAILY_PLAN_CONTAINERS = 2;     // 2 kontenery / dobę (każdy 0–100% zaawansowania)
+
 const MACHINES_CATALOG = [
     { id: 'L-01', name: 'Laser BLM Płytowy CNC', area: 'Cięcie PK1', nominalTaktMin: 4.2, hourlyCostPLN: 480 },
     { id: 'L-02', name: 'Laser Rurowy Adige', area: 'Cięcie PK1', nominalTaktMin: 5.0, hourlyCostPLN: 450 },
@@ -27,7 +29,6 @@ const MACHINES_CATALOG = [
     { id: 'M-01', name: 'Montaż Końcowy Kontenerów', area: 'Montaż Końcowy', nominalTaktMin: 9.2, hourlyCostPLN: 380 }
 ];
 
-// Standardowe 5 kategorii strat Pareto (Lean / TPM)
 const PARETO_CATEGORIES = [
     { id: 'LOGISTICS', label: '1. Logistyka / Stół urobku', color: '#F43F5E', textClass: 'text-rose-400' },
     { id: 'MAINTENANCE', label: '2. UR – Podajniki i napędy', color: '#F59E0B', textClass: 'text-amber-400' },
@@ -36,7 +37,6 @@ const PARETO_CATEGORIES = [
     { id: 'MICRO', label: '5. Mikroprzestoje gniazd', color: '#334155', textClass: 'text-slate-400' }
 ];
 
-// Globalny stan aplikacji
 const AppState = {
     selectedShift: 1,
     selectedPreset: 'today',
@@ -48,12 +48,13 @@ const AppState = {
     visionBaseData: { stations: [], audits: [] },
     currentVisionImageBase64: null,
     isMachinesGridCollapsed: false,
-    syntheticCompletedBonus: 0, // Dodatkowe jednostki wyprodukowane na żywo od momentu otwarcia aplikacji
+    livePaletteBonus: 0,      // Przyrost palet od momentu uruchomienia terminala/kokpitu
+    liveContainerPctBonus: 0, // Przyrost % obrobienia kontenerów od momentu uruchomienia
     lastProducedMessage: ''
 };
 
 // =============================================================================
-// 1. INICJALIZACJA SYSTEMU, ZEGARA I SYNTETYCZNEJ KOLEJKI PRODUKCYJNEJ
+// 1. INICJALIZACJA SYSTEMU, ZEGARA I SYNTETYCZNEJ KOLEJKI PRODUKCYJNEJ 24/7
 // =============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -81,10 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateLiveClockBadge();
     setInterval(updateLiveClockBadge, 15000);
 
-    // Pierwsze przeliczenie z wymuszoną animacją pierścieni HUD od 0
     recalculateAndRenderAll(true);
-
-    // Uruchomienie syntetycznej kolejki produkcyjnej na żywo
     startSyntheticProductionQueue();
 });
 
@@ -98,11 +96,10 @@ function startSyntheticProductionQueue() {
         'Kratownica podłogowa po kontroli NDT'
     ];
 
-    // Ustawienie początkowego komunikatu spływu na podstawie bieżącej godziny
     const initCtx = MESBus.getProductionTimeContext(new Date());
     const elapsedInit = getCurrentShiftElapsedRatio(new Date(), initCtx.shiftId);
-    if (elapsedInit <= 0.04) {
-        AppState.lastProducedMessage = `Początek ${initCtx.shiftName} – rozruch linii i nagrzewanie źródeł spawalniczych...`;
+    if (elapsedInit <= 0.03) {
+        AppState.lastProducedMessage = `Start ${initCtx.shiftName} – rozruch linii i bazowanie stanowisk...`;
     } else {
         const m = MACHINES_CATALOG[new Date().getMinutes() % MACHINES_CATALOG.length];
         const b = batchItems[new Date().getHours() % batchItems.length];
@@ -110,27 +107,38 @@ function startSyntheticProductionQueue() {
     }
     updateTickerUI();
 
-    // Co 14 sekund spływa kolejna wyprodukowana jednostka w aktywnej zmianie
+    // Powolny, realistyczny przyrost produkcji w czasie rzeczywistym (co 10 sekund)
+    let tickCounter = 0;
     setInterval(() => {
+        tickCounter += 1;
         const now = new Date();
         const nowCtx = MESBus.getProductionTimeContext(now);
-        AppState.syntheticCompletedBonus += 1;
 
-        const m = MACHINES_CATALOG[Math.floor(Math.random() * MACHINES_CATALOG.length)];
-        const b = batchItems[Math.floor(Math.random() * batchItems.length)];
-        const orderNo = `#ZL-2026/${884 + (AppState.syntheticCompletedBonus % 12)}`;
+        // Co każdy cykl (10s) postęp obróbki kontenera rośnie o +0.4%
+        AppState.liveContainerPctBonus += 0.4;
 
-        AppState.lastProducedMessage = `Ostatni spływ (${nowCtx.timeFormatted}): ${b} • Gniazdo ${m.id} (+1 paleta)`;
+        // Co trzeci cykl (~30s) spływa +1 gotowa paleta konstrukcyjna
+        if (tickCounter % 3 === 0) {
+            AppState.livePaletteBonus += 1;
+        }
+
+        const m = MACHINES_CATALOG[tickCounter % MACHINES_CATALOG.length];
+        const b = batchItems[tickCounter % batchItems.length];
+        const orderNo = `#ZL-2026/${884 + (AppState.livePaletteBonus % 15)}`;
+
+        AppState.lastProducedMessage = tickCounter % 3 === 0
+            ? `Ostatni spływ (${nowCtx.timeFormatted}): ${b} • Gniazdo ${m.id} (+1 paleta)`
+            : `W toku (${nowCtx.timeFormatted}): Obróbka podzespołów kontenera na ${m.id} (+0.4% postępu)`;
+
         const orderEl = document.getElementById('live-queue-order');
         if (orderEl) orderEl.textContent = `Zlecenie: ${orderNo}`;
 
         updateTickerUI();
 
-        // Jeśli użytkownik ogląda dzisiaj lub bieżący tydzień/miesiąc, aktualizujemy licznik planu na żywo
         if (AppState.dateTo >= nowCtx.dateStr) {
             recalculateAndRenderAll(false);
         }
-    }, 14000);
+    }, 10000);
 }
 
 function updateTickerUI() {
@@ -158,7 +166,7 @@ function setupDateInputBounds(todayStr) {
 
     const footerRange = document.getElementById('footer-timeline-range');
     if (footerRange) {
-        footerRange.textContent = `Horyzont bazy: ${minStr} – ${todayStr} (30 dni wstecz)`;
+        footerRange.textContent = `Horyzont bazy: ${minStr} – ${todayStr} (Ruch ciągły 24/7)`;
     }
 }
 
@@ -178,7 +186,7 @@ function updateLiveClockBadge() {
 }
 
 // =============================================================================
-// 2. GENERATOR 30-DNIOWEJ HISTORII "OD TERAZ WSTECZ" (ZERO DANYCH Z PRZYSZŁOŚCI)
+// 2. GENERATOR 30-DNIOWEJ HISTORII "OD TERAZ WSTECZ" (PEŁNE 7 DNI W TYGODNIU)
 // =============================================================================
 function initHistoricalAndLiveEvents() {
     const now = new Date();
@@ -227,12 +235,9 @@ function generate30DaysBackwardBaseline(nowDate, nowCtx) {
         const d = new Date(nowCtx.dateStr + 'T12:00:00');
         d.setDate(d.getDate() - daysAgo);
         const dateStr = formatDateISO(d);
-        const dayOfWeek = d.getDay();
 
-        if (dayOfWeek === 0) continue;
-        const maxShiftsForDay = dayOfWeek === 6 ? 1 : 3;
-
-        for (let shiftId = 1; shiftId <= maxShiftsForDay; shiftId++) {
+        // Ruch ciągły 24/7: wszystkie 7 dni tygodnia mają pełne 3 zmiany
+        for (let shiftId = 1; shiftId <= 3; shiftId++) {
             if (daysAgo === 0 && shiftId > nowCtx.shiftId) {
                 continue;
             }
@@ -243,7 +248,7 @@ function generate30DaysBackwardBaseline(nowDate, nowCtx) {
             let effectiveCount = eventsCount;
             if (daysAgo === 0 && shiftId === nowCtx.shiftId) {
                 const progress = getCurrentShiftElapsedRatio(nowDate, shiftId);
-                effectiveCount = progress < 0.04 ? 0 : Math.max(1, Math.floor(eventsCount * progress));
+                effectiveCount = progress < 0.03 ? 0 : Math.max(1, Math.floor(eventsCount * progress));
             }
 
             for (let i = 0; i < effectiveCount; i++) {
@@ -285,7 +290,6 @@ function generate30DaysBackwardBaseline(nowDate, nowCtx) {
     return events.reverse();
 }
 
-// Wylicza jaki ułamek (0.0 - 1.0) aktualnej 8-godzinnej zmiany już upłynął
 function getCurrentShiftElapsedRatio(nowDate, shiftId) {
     const h = nowDate.getHours();
     const m = nowDate.getMinutes();
@@ -303,7 +307,7 @@ function getCurrentShiftElapsedRatio(nowDate, shiftId) {
 }
 
 // =============================================================================
-// 3. OBSŁUGA FILTRÓW ZMIAN I OKRESÓW (Z WYMUSZONĄ ANIMACJĄ HUD)
+// 3. OBSŁUGA FILTRÓW ZMIAN I OKRESÓW
 // =============================================================================
 function setShiftFilter(shiftVal) {
     AppState.selectedShift = shiftVal;
@@ -386,7 +390,7 @@ function resetToCurrentLiveShift() {
 }
 
 // =============================================================================
-// 4. GŁÓWNA FUNKCJA PRZELICZAJĄCA WSKAŹNIKI (OEE, PARETO, PLAN, MASZYNY)
+// 4. GŁÓWNA FUNKCJA PRZELICZAJĄCA WSKAŹNIKI (24/7, 54 PALETY + 2 KONTENERY)
 // =============================================================================
 function recalculateAndRenderAll(animateRingsFromZero = false) {
     const now = new Date();
@@ -407,17 +411,14 @@ function recalculateAndRenderAll(animateRingsFromZero = false) {
         }
     }
 
-    // 1. Filtrowanie zdarzeń
     const filteredEvents = AppState.allEvents.filter(ev => {
         const inDateRange = ev.dateStr >= AppState.dateFrom && ev.dateStr <= AppState.dateTo;
         const inShift = AppState.selectedShift === 'ALL' || Number(ev.shiftId) === Number(AppState.selectedShift);
         return inDateRange && inShift;
     });
 
-    // 2. Czas nominalny oraz czas, który faktycznie upłynął w wybranym oknie
     const timeMetrics = calculateHorizonTimeMetrics(now, nowCtx, isFutureShiftToday);
 
-    // 3. Agregacja Pareto
     const paretoTotals = { LOGISTICS: 0, MAINTENANCE: 0, TOOLING: 0, SMED: 0, MICRO: 0 };
     let totalDowntimeMin = 0;
 
@@ -429,7 +430,6 @@ function recalculateAndRenderAll(animateRingsFromZero = false) {
 
     renderParetoHUD(paretoTotals, totalDowntimeMin, animateRingsFromZero);
 
-    // 4. Wyliczenie Globalnego OEE (A x P x Q)
     let availPct = 0, perfPct = 0, qualPct = 0, oeePct = 0;
 
     if (!isFutureShiftToday && timeMetrics.elapsedMinutes > 5) {
@@ -443,18 +443,15 @@ function recalculateAndRenderAll(animateRingsFromZero = false) {
 
     renderOeeHUD(availPct, perfPct, qualPct, oeePct, animateRingsFromZero);
 
-    // 5. Realizacja Planu w formacie Wykonanie / Cel (np. 20 / 34 lub 54 / 98)
+    // Realizacja planu: 54 palety/dobę (18/zmianę) oraz 2 kontenery/dobę (% każdego)
     renderProductionPlanHUD(timeMetrics, oeePct, isFutureShiftToday, nowCtx);
 
-    // 6. Wąskie gardło
     renderBottleneckCard(filteredEvents, isFutureShiftToday);
-
-    // 7. Siatka 8 Maszyn (posortowana od najgorszego do najlepszego OEE) + Incydenty
     renderMachinesGrid(filteredEvents, timeMetrics.elapsedMinutes, isFutureShiftToday);
     renderIncidentsList(filteredEvents);
 }
 
-// Zwraca zarówno pełny planowany czas okresu (scheduledMinutes), jak i minuty, które już upłynęły (elapsedMinutes)
+// Liczy nominalny oraz upłynięty czas pracy dla WSZYSTKICH 7 dni tygodnia (24/7)
 function calculateHorizonTimeMetrics(nowDate, nowCtx, isFutureShiftToday) {
     if (isFutureShiftToday) return { scheduledMinutes: 480, elapsedMinutes: 0 };
 
@@ -465,10 +462,7 @@ function calculateHorizonTimeMetrics(nowDate, nowCtx, isFutureShiftToday) {
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dStr = formatDateISO(d);
-        const dow = d.getDay();
-        if (dow === 0) continue;
-
-        const shiftsInDay = dow === 6 ? [1] : [1, 2, 3];
+        const shiftsInDay = [1, 2, 3]; // Każda doba ma 3 zmiany (24/7)
 
         shiftsInDay.forEach(sId => {
             if (AppState.selectedShift !== 'ALL' && Number(AppState.selectedShift) !== sId) {
@@ -493,7 +487,7 @@ function calculateHorizonTimeMetrics(nowDate, nowCtx, isFutureShiftToday) {
 }
 
 // =============================================================================
-// 5. RENDEROWANIE KOMPONENTÓW HUD (PARETO, OEE, PLAN WYKONANIE/CEL, MASZYNY)
+// 5. RENDEROWANIE KOMPONENTÓW HUD (54 PALETY + 2 KONTENERY Z PROCENTAMI)
 // =============================================================================
 function renderParetoHUD(paretoTotals, totalDowntimeMin, animateFromZero) {
     document.getElementById('pareto-total-badge').textContent = `Suma: ${totalDowntimeMin} min`;
@@ -509,7 +503,6 @@ function renderParetoHUD(paretoTotals, totalDowntimeMin, animateFromZero) {
     const legendContainer = document.getElementById('pareto-legend-list');
     legendContainer.innerHTML = '';
 
-    // Jeśli żądamy świeżej animacji, najpierw zerujemy pierścienie
     if (animateFromZero) {
         for (let idx = 0; idx < 5; idx++) {
             const rEl = document.getElementById(`pareto-ring-${idx + 1}`);
@@ -610,35 +603,97 @@ function renderOeeHUD(availPct, perfPct, qualPct, oeePct, animateFromZero) {
 }
 
 function renderProductionPlanHUD(timeMetrics, oeePct, isFutureShiftToday, nowCtx) {
-    // Cel całego wybranego okresu (np. 34 szt. na zmianę, 98 szt. na pełną dobę 3 zmian)
-    const shiftsCount = timeMetrics.scheduledMinutes / 480;
-    const targetTotal = Math.max(1, Math.round(shiftsCount * 32.67)); // 3 zmiany = 98 szt., 1 zmiana = 33 szt.
+    // 1. PLAN PALET: 54 palety / dobę (czyli 18 palet na każdą 8-godzinną zmianę)
+    const shiftsCount = Math.max(1, timeMetrics.scheduledMinutes / 480);
+    const palettesPerShift = DAILY_PLAN_PALETTES / 3; // 18 palet / zmianę
+    const targetPalettes = Math.round(shiftsCount * palettesPerShift);
 
-    let actualProduced = 0;
-    if (!isFutureShiftToday && timeMetrics.elapsedMinutes > 5) {
+    const includesCurrentLiveWindow = (AppState.dateTo >= nowCtx.dateStr) &&
+        (AppState.selectedShift === 'ALL' || Number(AppState.selectedShift) === nowCtx.shiftId);
+
+    let actualPalettes = 0;
+    if (!isFutureShiftToday && timeMetrics.elapsedMinutes > 2) {
         const elapsedRatio = timeMetrics.elapsedMinutes / timeMetrics.scheduledMinutes;
-        const oeeMultiplier = oeePct > 0 ? Math.min(1.02, oeePct / 74.0) : 0.85;
-        actualProduced = Math.round(targetTotal * elapsedRatio * oeeMultiplier);
+        const oeeFactor = oeePct > 0 ? Math.min(1.02, Math.max(0.82, oeePct / 74.0)) : 0.90;
+        actualPalettes = Math.round(targetPalettes * elapsedRatio * oeeFactor);
 
-        // Jeśli okno obejmuje bieżącą zmianę, doliczamy jednostki wyprodukowane na żywo przez syntetyczną kolejkę
-        if (AppState.dateTo >= nowCtx.dateStr &&
-            (AppState.selectedShift === 'ALL' || Number(AppState.selectedShift) === nowCtx.shiftId)) {
-            actualProduced = Math.min(targetTotal, actualProduced + AppState.syntheticCompletedBonus);
+        if (includesCurrentLiveWindow) {
+            actualPalettes = Math.min(targetPalettes, actualPalettes + AppState.livePaletteBonus);
         }
     }
 
-    const remaining = Math.max(0, targetTotal - actualProduced);
-    const planPct = targetTotal > 0 ? (actualProduced / targetTotal) * 100 : 0;
-    const tonnage = actualProduced * 0.68;
-    const avgTakt = actualProduced > 0 ? (timeMetrics.elapsedMinutes / actualProduced) : 0;
+    const remainingPalettes = Math.max(0, targetPalettes - actualPalettes);
+    document.getElementById('kpi-plan-ratio').textContent = `${actualPalettes} / ${targetPalettes}`;
+    document.getElementById('kpi-plan-remaining').textContent = `Pozostało: ${remainingPalettes} szt. w kolejce`;
 
-    // Wyświetlenie ułamka np. 20 / 33 lub 54 / 98
-    document.getElementById('kpi-plan-ratio').textContent = `${actualProduced} / ${targetTotal}`;
-    document.getElementById('kpi-plan-remaining').textContent = `${remaining} szt.`;
+    // 2. PLAN KONTENERÓW: 2 kontenery / dobę (każdy pokazuje % obrobienia na tę chwilę)
+    const containersTarget = Math.max(1, Math.round((shiftsCount / 3) * DAILY_PLAN_CONTAINERS * 10) / 10);
+    const totalContainersCapacity = Math.max(2, Math.ceil((shiftsCount / 3) * DAILY_PLAN_CONTAINERS));
+
+    let completedContainerUnits = 0;
+    if (!isFutureShiftToday && timeMetrics.elapsedMinutes > 2) {
+        // Proporcja względem pełnej doby 1440 min (2 kontenery na 1440 min = 1 kontener na 720 min)
+        const baseContainers = (timeMetrics.elapsedMinutes / 720) * 0.94;
+        const bonusUnits = includesCurrentLiveWindow ? (AppState.liveContainerPctBonus / 100) : 0;
+        completedContainerUnits = Math.min(totalContainersCapacity, baseContainers + bonusUnits);
+    }
+
+    // Wyliczamy procent zaawansowania dla dwóch bieżących egzemplarzy (Kontener #1 i Kontener #2)
+    let c1Pct = 0;
+    let c2Pct = 0;
+    if (!isFutureShiftToday) {
+        if (totalContainersCapacity === 2) {
+            c1Pct = Math.min(100, Math.round(completedContainerUnits * 100));
+            c2Pct = completedContainerUnits > 1 ? Math.min(100, Math.round((completedContainerUnits - 1) * 100)) : 0;
+        } else {
+            // Dla zakresów wielodniowych pokazujemy dwa aktualnie spawane kontenery z dzisiejszej zmiany
+            const modUnits = completedContainerUnits % 2;
+            c1Pct = Math.min(100, Math.round(modUnits * 100));
+            c2Pct = modUnits > 1 ? Math.min(100, Math.round((modUnits - 1) * 100)) : 0;
+        }
+    }
+
+    const contSummaryEl = document.getElementById('kpi-containers-summary');
+    if (contSummaryEl) {
+        contSummaryEl.textContent = `${completedContainerUnits.toFixed(2)} / ${totalContainersCapacity} szt.`;
+    }
+
+    const contListEl = document.getElementById('containers-progress-list');
+    if (contListEl) {
+        const renderContRow = (label, pct) => {
+            const isDone = pct >= 100;
+            const barColor = isDone ? 'bg-emerald-400' : (pct > 0 ? 'bg-amber-400' : 'bg-slate-700');
+            const statusText = isDone ? 'GOTOWY' : (pct > 0 ? `${pct}%` : 'OCZEKUJE');
+            return `
+                <div>
+                    <div class="flex justify-between text-[11px] font-mono mb-0.5">
+                        <span class="text-slate-200">${label}</span>
+                        <span class="${isDone ? 'text-emerald-400 font-bold' : 'text-amber-400 font-semibold'}">${statusText}</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                        <div class="h-full ${barColor} transition-all duration-500" style="width: ${pct}%"></div>
+                    </div>
+                </div>
+            `;
+        };
+        contListEl.innerHTML =
+            renderContRow('Kontener 20ft #1', c1Pct) +
+            renderContRow('Kontener 20ft #2', c2Pct);
+    }
+
+    // 3. ŁĄCZNY % WYKONANIA PLANU (ważony: 70% palety + 30% kontenery) oraz dolny pasek
+    const palettesPct = targetPalettes > 0 ? (actualPalettes / targetPalettes) * 100 : 0;
+    const containersPct = totalContainersCapacity > 0 ? (completedContainerUnits / totalContainersCapacity) * 100 : 0;
+    const overallPlanPct = isFutureShiftToday ? 0 : Math.min(100, (palettesPct * 0.70) + (containersPct * 0.30));
+
+    const tonnage = (actualPalettes * 0.68) + (completedContainerUnits * 2.45);
+    const avgTakt = actualPalettes > 0 ? (timeMetrics.elapsedMinutes / actualPalettes) : 0;
+
     document.getElementById('kpi-tonnage').textContent = `${tonnage.toFixed(1)} t`;
     document.getElementById('kpi-takt').textContent = `${avgTakt.toFixed(1)} min`;
-    document.getElementById('plan-pct-badge').textContent = `${planPct.toFixed(1)}% Celu`;
-    document.getElementById('plan-progress-bar').style.width = `${Math.min(100, planPct)}%`;
+    document.getElementById('plan-pct-badge').textContent = `${overallPlanPct.toFixed(1)}% Planu`;
+    document.getElementById('plan-bottom-pct-text').textContent = `${overallPlanPct.toFixed(1)}%`;
+    document.getElementById('plan-progress-bar').style.width = `${overallPlanPct}%`;
 
     const shiftLabel = AppState.selectedShift === 'ALL' ? 'Pełna Doba (I–III)' : `Zmiana ${AppState.selectedShift}`;
     document.getElementById('plan-subtitle').textContent = `Zakres: ${AppState.dateFrom} – ${AppState.dateTo} • Filtr: ${shiftLabel}`;
@@ -724,7 +779,6 @@ function renderMachinesGrid(filteredEvents, elapsedMinutes, isFutureShiftToday) 
 
     const todayStr = MESBus.getProductionTimeContext().dateStr;
 
-    // 1. Wyliczamy pełne metryki A, P, Q, OEE oraz trend 5-słupkowy dla każdego gniazda
     const enrichedMachines = MACHINES_CATALOG.map((m, idx) => {
         const mEvents = filteredEvents.filter(e => e.machineId === m.id);
         const downtimeMin = mEvents.reduce((acc, e) => acc + e.durationMin, 0);
@@ -738,7 +792,6 @@ function renderMachinesGrid(filteredEvents, elapsedMinutes, isFutureShiftToday) 
             oee = (avail / 100) * (perf / 100) * (qual / 100) * 100;
         }
 
-        // Generujemy 5 słupków trendu OEE z ostatnich punktów pomiarowych (zakończonych na bieżącym OEE)
         const sparkBars = isFutureShiftToday ? [0, 0, 0, 0, 0] : [
             Math.max(45, Math.min(96, oee + ((idx % 3) - 1) * 5)),
             Math.max(45, Math.min(96, oee - ((idx % 2) * 4) + 2)),
@@ -760,18 +813,16 @@ function renderMachinesGrid(filteredEvents, elapsedMinutes, isFutureShiftToday) 
         };
     });
 
-    // 2. Sortowanie rosnąco: OD NAJGORSZEGO OEE DO NAJLEPSZEGO (Management by Exception)
+    // Sortowanie od najgorszego do najlepszego OEE
     enrichedMachines.sort((a, b) => a.oee - b.oee);
 
-    // Aktualizacja paska podsumowania (widocznego po zwinięciu sekcji)
     const collapsedSummary = document.getElementById('collapsed-summary-text');
     if (collapsedSummary && enrichedMachines.length > 0) {
         const worst = enrichedMachines[0];
         const best = enrichedMachines[enrichedMachines.length - 1];
-        collapsedSummary.innerHTML = `Najniższe OEE: <strong class="text-rose-400">${worst.id} (${worst.oee.toFixed(1)}%)</strong> • Najwyższe OEE: <strong class="text-emerald-400">${best.id} (${best.oee.toFixed(1)}%)</strong> • Kliknij „Rozwiń gniazda”, aby zobaczyć pełną analitykę 8 stanowisk.`;
+        collapsedSummary.innerHTML = `Najniższe OEE: <strong class="text-rose-400">${worst.id} (${worst.oee.toFixed(1)}%)</strong> • Najwyższe OEE: <strong class="text-emerald-400">${best.id} (${best.oee.toFixed(1)}%)</strong> • Kliknij „Rozwiń gniazda”, aby wyświetlić pełną analitykę 8 stanowisk.`;
     }
 
-    // 3. Renderowanie kart z paskiem A/P/Q i mini-wykresem słupkowym trendu
     enrichedMachines.forEach((m, rankIdx) => {
         const isCritical = (!isFutureShiftToday && (m.oee < 68 || m.downtimeMin > 25 || m.hasLiveAlert));
         const statusDotClass = isFutureShiftToday
@@ -786,7 +837,6 @@ function renderMachinesGrid(filteredEvents, elapsedMinutes, isFutureShiftToday) 
         card.onclick = () => openMachineDetailModal(m, m.events, m.oee, m.downtimeMin);
         card.className = `glass-card rounded-2xl p-3.5 cursor-pointer relative overflow-hidden flex flex-col justify-between ${isCritical ? 'border-rose-500/45 bg-rose-950/15' : ''}`;
 
-        // Budowa 5 mini-słupków trendu OEE
         const sparkHtml = m.sparkBars.map((val, bIdx) => {
             const barColor = val === 0 ? 'bg-slate-800' : (val < 68 ? 'bg-rose-500' : (val < 78 ? 'bg-amber-400' : 'bg-emerald-400'));
             const isLast = bIdx === 4;
@@ -811,9 +861,7 @@ function renderMachinesGrid(filteredEvents, elapsedMinutes, isFutureShiftToday) 
                 <p class="text-[11px] text-slate-400 mb-2.5">${m.area}</p>
             </div>
 
-            <!-- Sekcja wykresów na karcie gniazda -->
             <div class="space-y-2.5 pt-2 border-t border-slate-800/80">
-                <!-- Pasek składowych A / P / Q -->
                 <div>
                     <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1">
                         <span>A:${m.avail.toFixed(0)}%</span>
@@ -827,7 +875,6 @@ function renderMachinesGrid(filteredEvents, elapsedMinutes, isFutureShiftToday) 
                     </div>
                 </div>
 
-                <!-- Mini-wykres słupkowy trendu + OEE i Przestoje -->
                 <div class="flex items-end justify-between gap-3 pt-1">
                     <div class="w-20 flex items-end gap-1 shrink-0">
                         ${sparkHtml}
@@ -862,7 +909,7 @@ function handleIncomingTerminalEvent(liveEvent) {
 }
 
 // =============================================================================
-// 8. MODUŁ 5S VISION (HYBRYDA: BAZA JSON + LEKKI BUFOR SESJI)
+// 8. MODUŁ 5S VISION
 // =============================================================================
 async function load5SVisionDatabase() {
     let baseData = { stations: [], audits: [] };
@@ -942,7 +989,7 @@ async function executeLiveVisionAudit() {
     };
 
     btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Skanowanie 1S–5S i BHP (Gemini 2.5 Pro)...`;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Skanowanie 1S–5S i BHP...`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
@@ -1133,7 +1180,6 @@ async function run5WhyAnalysis() {
     progressPct.textContent = '10%';
     progressStep.textContent = '1/4 Pobieranie telemetrii gniazda i kodu błędu...';
 
-    // Animacja etapów diagnostycznych w trakcie oczekiwania na odpowiedź modelu
     const stageTimers = [
         setTimeout(() => {
             progressBar.style.width = '38%';
@@ -1143,7 +1189,7 @@ async function run5WhyAnalysis() {
         setTimeout(() => {
             progressBar.style.width = '68%';
             progressPct.textContent = '68%';
-            progressStep.textContent = '3/4 Wnioskowanie przyczynowe 5-Why (Gemini 2.5 Flash)...';
+            progressStep.textContent = '3/4 Wnioskowanie przyczynowe 5-Why (Gemini 3.8 Flash)...';
         }, 850),
         setTimeout(() => {
             progressBar.style.width = '88%';
@@ -1363,7 +1409,7 @@ function updateAiStatusPill() {
     const dot = document.getElementById('ai-status-dot');
     const lbl = document.getElementById('ai-status-label');
     if (dot) dot.className = `w-2 h-2 rounded-full ${active ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`;
-    if (lbl) lbl.textContent = active ? 'AI: Gemini 2.5 Pro/Flash' : 'AI: Edge Offline';
+    if (lbl) lbl.textContent = active ? 'AI: Gemini 3.8 Flash' : 'AI: Edge Offline';
 }
 
 function openAddStationModal() {

@@ -108,9 +108,9 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <span class="font-display font-bold text-lg lg:text-xl tracking-tight text-white">PROTON <span class="text-amber-400">LEAN OS</span></span>
-                        <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 rounded border border-slate-700">v4.0 MES</span>
+                        <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 rounded border border-slate-700">v4.1 MES</span>
                     </div>
-                    <p class="text-[11px] text-slate-400 font-mono hidden md:block">Zakład Konstrukcji Stalowych • Ciągły Przepływ & AI</p>
+                    <p class="text-[11px] text-slate-400 font-mono hidden md:block">Zakład Konstrukcji Stalowych • Ciągły Przepływ 24/7 & AI</p>
                 </div>
             </div>
 
@@ -348,7 +348,7 @@
                 </div>
             </div>
 
-            <!-- RZĄD 2 HUD: Realizacja Planu Produkcji (Syntetyczna Kolejka Live) + Aktywne Wąskie Gardło -->
+            <!-- RZĄD 2 HUD: Realizacja Planu Produkcji (54 Palety + 2 Kontenery/dobę) + Aktywne Wąskie Gardło -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
                 
                 <!-- Realizacja Planu Produkcyjnego -->
@@ -358,7 +358,7 @@
                             <i data-lucide="package-check" class="w-5 h-5 text-emerald-400"></i>
                             <div>
                                 <div class="flex items-center gap-2">
-                                    <h3 class="font-display font-bold text-sm lg:text-base text-white">Realizacja Planu Spływu (Ciągły Przepływ)</h3>
+                                    <h3 class="font-display font-bold text-sm lg:text-base text-white">Realizacja Planu Spływu (54 Palety + 2 Kontenery / dobę)</h3>
                                     <span id="live-queue-badge" class="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 font-mono text-[10px] text-emerald-400 flex items-center gap-1 live-flow-pulse">
                                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Kolejka aktywna
                                     </span>
@@ -369,35 +369,48 @@
                         <span id="plan-pct-badge" class="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 font-mono text-xs font-bold text-emerald-400">0.0% Planu</span>
                     </div>
 
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 my-2">
-                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
-                            <span class="text-[11px] font-mono text-slate-400 uppercase">Wykonanie / Cel</span>
-                            <div id="kpi-plan-ratio" class="font-mono font-bold text-lg lg:text-xl text-emerald-400 mt-0.5">0 / 0</div>
-                            <span class="text-[10px] font-mono text-slate-500">palet konstrukcyjnych</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 my-2">
+                        <!-- Kafel 1: Palety Konstrukcyjne (Wykonanie / Cel) -->
+                        <div class="sm:col-span-4 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+                            <span class="text-[11px] font-mono text-slate-400 uppercase">Palety (Wykonanie / Cel)</span>
+                            <div id="kpi-plan-ratio" class="font-mono font-bold text-xl lg:text-2xl text-emerald-400 my-1">0 / 18</div>
+                            <span id="kpi-plan-remaining" class="text-[10px] font-mono text-slate-400">Pozostało: 18 szt. w kolejce</span>
                         </div>
-                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
-                            <span class="text-[11px] font-mono text-slate-400 uppercase">Pozostało do Celu</span>
-                            <div id="kpi-plan-remaining" class="font-mono font-bold text-lg lg:text-xl text-white mt-0.5">0 szt.</div>
-                            <span class="text-[10px] font-mono text-slate-500">w kolejce zlecenia</span>
+
+                        <!-- Kafel 2: Kontenery (2 szt. / dobę - zaawansowanie procentowe każdego egzemplarza) -->
+                        <div class="sm:col-span-5 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-[11px] font-mono text-slate-400 uppercase">Kontenery (Plan: 2 szt./dobę)</span>
+                                <span id="kpi-containers-summary" class="font-mono text-[10px] font-bold text-amber-400">0.0 / 2 szt.</span>
+                            </div>
+                            <div class="space-y-2" id="containers-progress-list">
+                                <!-- Wypełniane dynamicznie przez JS: Kontener #1 (%) i Kontener #2 (%) -->
+                            </div>
                         </div>
-                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
-                            <span class="text-[11px] font-mono text-slate-400 uppercase">Tonaż Stali</span>
-                            <div id="kpi-tonnage" class="font-mono font-bold text-lg lg:text-xl text-amber-400 mt-0.5">0.0 t</div>
-                            <span class="text-[10px] font-mono text-slate-500">spływ z linii</span>
-                        </div>
-                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
-                            <span class="text-[11px] font-mono text-slate-400 uppercase">Takt Średni</span>
-                            <div id="kpi-takt" class="font-mono font-bold text-lg lg:text-xl text-slate-200 mt-0.5">0.0 min</div>
-                            <span class="text-[10px] font-mono text-slate-500">rytm spływu</span>
+
+                        <!-- Kafel 3: Tonaż Stali i Takt -->
+                        <div class="sm:col-span-3 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+                            <div>
+                                <span class="text-[10px] font-mono text-slate-400 uppercase block">Tonaż Spływu</span>
+                                <div id="kpi-tonnage" class="font-mono font-bold text-lg text-amber-400">0.0 t</div>
+                            </div>
+                            <div class="pt-1.5 border-t border-slate-800/80">
+                                <span class="text-[10px] font-mono text-slate-400 uppercase block">Takt Średni</span>
+                                <div id="kpi-takt" class="font-mono font-bold text-sm text-slate-200">0.0 min</div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Pasek postępu + żywy ticker ostatniej wyprodukowanej partii -->
+                    <!-- Dolny pasek postępu całkowitego wykonania planu -->
                     <div class="mt-2 space-y-1.5">
-                        <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-                            <div id="plan-progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-700" style="width: 0%"></div>
+                        <div class="flex items-center justify-between text-[11px] font-mono">
+                            <span class="text-slate-400">Łączny postęp realizacji planu okresu:</span>
+                            <span id="plan-bottom-pct-text" class="text-emerald-400 font-bold">0.0%</span>
                         </div>
-                        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <div class="w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                            <div id="plan-progress-bar" class="h-full rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-emerald-400 transition-all duration-700" style="width: 0%"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-0.5">
                             <span id="live-production-ticker" class="truncate">Ostatni spływ: Oczekiwanie na takt...</span>
                             <span id="live-queue-order" class="text-amber-400 shrink-0">Zlecenie: #ZL-2026/884</span>
                         </div>
@@ -445,12 +458,10 @@
                     </div>
                 </div>
 
-                <!-- Kompaktowe podsumowanie widoczne po zwinięciu siatki -->
                 <div id="machines-collapsed-summary" class="hidden mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-300">
                     <span id="collapsed-summary-text">8 aktywnych gniazd ciągu produkcyjnego • Kliknij „Rozwiń gniazda”, aby wyświetlić karty i wykresy.</span>
                 </div>
 
-                <!-- Rozwijana siatka 8 kart -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mt-4" id="machines-grid"></div>
             </div>
         </section>
@@ -493,7 +504,6 @@
                         </div>
                     </div>
 
-                    <!-- Animowany Pasek Postępu Wnioskowania AI -->
                     <div id="five-why-progress-box" class="hidden bg-slate-900/95 border border-amber-500/40 rounded-xl p-4 space-y-2.5">
                         <div class="flex items-center justify-between text-xs font-mono">
                             <span class="text-amber-400 font-semibold flex items-center gap-2">
@@ -533,7 +543,7 @@
                     <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                         <h2 class="font-display font-bold text-base text-white flex items-center gap-2">
                             <i data-lucide="camera" class="w-4 h-4 text-amber-400"></i>
-                            Nowa Inspekcja 5S Vision (Gemini 2.5 Pro)
+                            Nowa Inspekcja 5S Vision
                         </h2>
                         <button onclick="openAddStationModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-amber-400 flex items-center gap-1">
                             <i data-lucide="plus" class="w-3.5 h-3.5"></i> Dodaj stanowisko
@@ -620,7 +630,7 @@
     <!-- STOPKA SYSTEMOWA -->
     <footer class="border-t border-slate-800/80 bg-slate-950/80 py-3 px-4 sm:px-6 mt-auto">
         <div class="max-w-[1640px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] font-mono text-slate-500">
-            <div>PROTON LEAN OS v4.0 • Dual-Model AI (Gemini 2.5 Flash + Gemini 2.5 Pro Vision)</div>
+            <div>PROTON LEAN OS v4.1 • Ruch Ciągły 24/7 (54 Palety + 2 Kontenery / dobę) • Gemini 3.8 Flash</div>
             <div class="flex items-center gap-4">
                 <span id="footer-timeline-range">Horyzont bazy: 30 dni wstecz</span>
                 <button onclick="hardResetSystemData()" class="text-rose-400/80 hover:text-rose-400 underline transition-colors">Resetuj bufor sesji</button>
@@ -652,7 +662,7 @@
                 </h3>
                 <button onclick="closeAiConfigModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
             </div>
-            <p class="text-xs text-slate-400">Wklej klucz Google AI Studio API Key, aby aktywować modele <strong>Gemini 2.5 Pro</strong> (5S Vision) oraz <strong>Gemini 2.5 Flash</strong> (Sztab 5-Why).</p>
+            <p class="text-xs text-slate-400">Wklej klucz Google AI Studio API Key, aby aktywować model <strong>Gemini 3.8 Flash</strong> w chmurze.</p>
             <input type="password" id="gemini-key-input" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:border-amber-500 outline-none">
             <div class="flex justify-end gap-2">
                 <button onclick="clearGeminiApiKey()" class="px-3 py-2 rounded-xl bg-slate-800 text-xs font-mono text-rose-400 hover:bg-slate-700">Usuń klucz</button>
