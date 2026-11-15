@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Proton Lean OS | System Zarządzania Ciągłym Przepływem i AI</title>
-    <!-- Wektorowy Favicon SVG (eliminacja błędu 404 w konsoli) -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B0F19'/%3E%3Cpath d='M18 4L8 18h7l-1 10 10-14h-7l1-10z' fill='%23F59E0B'/%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -42,7 +41,6 @@
             min-height: 100vh;
         }
 
-        /* Wymuszenie ciemnego schematu przeglądarki i widocznych białych/złotych ikon kalendarza */
         input[type="date"] {
             color-scheme: dark;
             color: #F8FAFC !important;
@@ -51,10 +49,6 @@
             filter: invert(0.85) sepia(0.9) saturate(3.5) hue-rotate(5deg);
             cursor: pointer;
             opacity: 0.9;
-            transition: opacity 0.2s;
-        }
-        input[type="date"]::-webkit-calendar-picker-indicator:hover {
-            opacity: 1;
         }
 
         .glass-panel {
@@ -63,13 +57,13 @@
             border: 1px solid rgba(255, 255, 255, 0.08);
         }
         .glass-card {
-            background: rgba(22, 30, 46, 0.72);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(22, 30, 46, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.07);
             transition: all 0.2s ease;
         }
         .glass-card:hover {
-            border-color: rgba(245, 158, 11, 0.35);
-            transform: translateY(-1px);
+            border-color: rgba(245, 158, 11, 0.4);
+            transform: translateY(-2px);
         }
         .tab-active {
             background: rgba(245, 158, 11, 0.14);
@@ -83,26 +77,23 @@
             box-shadow: 0 0 14px rgba(245, 158, 11, 0.35);
         }
 
-        /* 3-sekundowa płynna animacja pierścieni SVG HUD */
         .hud-ring-segment {
-            transition: stroke-dasharray 3s cubic-bezier(0.22, 1, 0.36, 1),
-                        stroke-dashoffset 3s cubic-bezier(0.22, 1, 0.36, 1);
+            transition: stroke-dasharray 2.2s cubic-bezier(0.22, 1, 0.36, 1),
+                        stroke-dashoffset 2.2s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+        @keyframes pulseFlow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.45; }
         }
-        ::-webkit-scrollbar-track {
-            background: #0B0F19;
+        .live-flow-pulse {
+            animation: pulseFlow 2s infinite ease-in-out;
         }
-        ::-webkit-scrollbar-thumb {
-            background: #1E293B;
-            border-radius: 3px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #334155;
-        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0B0F19; }
+        ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
     </style>
 </head>
 <body class="antialiased selection:bg-amber-500 selection:text-slate-950 flex flex-col">
@@ -110,7 +101,6 @@
     <!-- GÓRNY PASEK NAWIGACJI -->
     <header class="sticky top-0 z-40 glass-panel border-b border-slate-800/80">
         <div class="max-w-[1640px] mx-auto px-3 sm:px-6 h-16 lg:h-20 flex items-center justify-between gap-2">
-            <!-- Logo i identyfikacja -->
             <div class="flex items-center gap-3 shrink-0">
                 <div class="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                     <i data-lucide="zap" class="w-5 h-5 text-amber-400"></i>
@@ -118,7 +108,7 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <span class="font-display font-bold text-lg lg:text-xl tracking-tight text-white">PROTON <span class="text-amber-400">LEAN OS</span></span>
-                        <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 rounded border border-slate-700">v3.9 MES</span>
+                        <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 rounded border border-slate-700">v4.0 MES</span>
                     </div>
                     <p class="text-[11px] text-slate-400 font-mono hidden md:block">Zakład Konstrukcji Stalowych • Ciągły Przepływ & AI</p>
                 </div>
@@ -145,32 +135,29 @@
                 </button>
             </nav>
 
-            <!-- Prawa strefa akcji: Dzwonek + Terminal + Konfiguracja AI -->
+            <!-- Prawa strefa akcji -->
             <div class="flex items-center gap-2 sm:gap-3">
-                <!-- Przycisk Kolejki Zadań Push-Pull -->
                 <button onclick="togglePushPullDrawer()" class="relative p-2 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/50 text-slate-300 hover:text-amber-400 transition-all" title="Kolejka Zadań Push-Pull">
                     <i data-lucide="bell" class="w-4 h-4 lg:w-5 lg:h-5"></i>
                     <span id="pushpull-counter" class="absolute -top-1 -right-1 w-4 h-4 lg:w-5 lg:h-5 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold flex items-center justify-center shadow-lg">3</span>
                 </button>
 
-                <!-- Przycisk otwierający Terminal Operatorski -->
                 <a href="terminal.html" target="_blank" class="px-2.5 lg:px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition-all">
                     <i data-lucide="tablet-smartphone" class="w-4 h-4 text-emerald-400"></i>
                     <span class="hidden sm:inline">Terminal</span>
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 </a>
 
-                <!-- Status Silnika Gemini AI -->
                 <button onclick="openAiConfigModal()" id="ai-status-pill" class="px-2.5 lg:px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700 hover:border-amber-500/50 text-xs font-mono flex items-center gap-2 transition-all">
                     <span id="ai-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
                     <span id="ai-status-label" class="text-slate-300 hidden md:inline">AI: Edge Offline</span>
-                    <span id="ai-status-label-short" class="text-slate-300 md:hidden">AI</span>
+                    <span class="text-slate-300 md:hidden">AI</span>
                     <i data-lucide="settings" class="w-3.5 h-3.5 text-slate-400"></i>
                 </button>
             </div>
         </div>
 
-        <!-- Pasek nawigacji dla mniejszych monitorów i tabletów (< 1024px) -->
+        <!-- Pasek nawigacji dla ekranów < 1024px -->
         <div class="lg:hidden border-t border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto">
             <button onclick="switchMainTab('cockpit')" id="mob-nav-cockpit" class="tab-active shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border border-transparent flex items-center gap-1.5">
                 <i data-lucide="activity" class="w-3.5 h-3.5"></i> Kokpit
@@ -191,11 +178,11 @@
     <main class="max-w-[1640px] w-full mx-auto px-3 sm:px-6 py-4 lg:py-5 flex-1">
 
         <!-- =================================================================== -->
-        <!-- WIDOK 1: KOKPIT OPERACYJNY (OEE, PARETO, TAKT CIĄGŁY, MASZYNY)      -->
+        <!-- WIDOK 1: KOKPIT OPERACYJNY                                          -->
         <!-- =================================================================== -->
         <section id="view-cockpit" class="space-y-4 lg:space-y-5">
 
-            <!-- Pasek Filtrów Zmianowych i Zakresu Czasu (Dynamiczna Oś Czasu) -->
+            <!-- Pasek Filtrów Zmianowych i Zakresu Czasu -->
             <div class="glass-panel rounded-2xl p-3 lg:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mr-1">
@@ -208,7 +195,7 @@
                         <button onclick="setShiftFilter(3)" data-shift="3" class="shift-btn px-3 py-1.5 rounded-lg text-xs font-mono transition-all text-slate-400 hover:text-white">III (22-06)</button>
                         <button onclick="setShiftFilter('ALL')" data-shift="ALL" class="shift-btn px-3 py-1.5 rounded-lg text-xs font-mono transition-all text-slate-400 hover:text-white">Pełna Doba</button>
                     </div>
-                    <span id="live-shift-indicator" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-mono text-emerald-400">
+                    <span id="live-shift-indicator" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-mono text-emerald-400">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
                         <span id="live-clock-badge">Zegar aktywny</span>
                     </span>
@@ -220,7 +207,7 @@
                         <select id="period-preset" onchange="applyPeriodPreset(this.value)" class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-slate-200 focus:border-amber-500 outline-none cursor-pointer">
                             <option value="today">Dziś (Bieżąca doba)</option>
                             <option value="yesterday">Wczoraj (Zamknięta doba)</option>
-                            <option value="wtd" selected>Bieżący tydzień (W-T-D)</option>
+                            <option value="wtd">Bieżący tydzień (W-T-D)</option>
                             <option value="last7">Ostatnie 7 dni</option>
                             <option value="mtd">Ostatnie 30 dni (M-T-D)</option>
                             <option value="custom">Zakres niestandardowy</option>
@@ -234,11 +221,11 @@
                 </div>
             </div>
 
-            <!-- Baner informacyjny dla nierozpoczętej zmiany lub okresu bez danych -->
+            <!-- Baner informacyjny dla nierozpoczętej zmiany -->
             <div id="future-shift-banner" class="hidden glass-panel border-amber-500/40 bg-amber-500/10 rounded-2xl p-3.5 flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3">
                     <i data-lucide="clock" class="w-5 h-5 text-amber-400 shrink-0"></i>
-                    <p class="text-xs font-mono text-amber-200" id="future-shift-text">Wybrana zmiana jeszcze się nie rozpoczęła zgodnie z zegarem systemowym.</p>
+                    <p class="text-xs font-mono text-amber-200" id="future-shift-text">Wybrana zmiana jeszcze się nie rozpoczęła.</p>
                 </div>
                 <button onclick="resetToCurrentLiveShift()" class="px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-xs shrink-0 hover:bg-amber-400 transition-all">
                     Wróć do aktywnej zmiany
@@ -248,7 +235,7 @@
             <!-- RZĄD 1 HUD: Struktura Pareto Przestojów + Globalne OEE Ciągu -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
                 
-                <!-- Karta 1: Struktura Pareto Przestojów (Pierścień SVG + 5 przyczyn) -->
+                <!-- Karta 1: Struktura Pareto Przestojów -->
                 <div class="glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
                     <div class="flex items-start justify-between border-b border-slate-800/80 pb-3 mb-4 gap-2">
                         <div class="flex items-center gap-3">
@@ -264,7 +251,6 @@
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center my-auto">
-                        <!-- Wykres pierścieniowy SVG Pareto -->
                         <div class="sm:col-span-5 flex items-center justify-center relative">
                             <svg viewBox="0 0 100 100" class="w-36 h-36 lg:w-44 lg:h-44 -rotate-90 drop-shadow-[0_0_12px_rgba(244,63,94,0.15)]">
                                 <circle cx="50" cy="50" r="40" fill="none" stroke="#1E293B" stroke-width="10"></circle>
@@ -280,7 +266,6 @@
                             </div>
                         </div>
 
-                        <!-- 5 pozycji Pareto -->
                         <div class="sm:col-span-7 space-y-2" id="pareto-legend-list"></div>
                     </div>
 
@@ -292,7 +277,7 @@
                     </div>
                 </div>
 
-                <!-- Karta 2: Globalne OEE Ciągu Produkcyjnego (3 koncentryczne pierścienie A x P x Q) -->
+                <!-- Karta 2: Globalne OEE Ciągu Produkcyjnego -->
                 <div class="glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
                     <div class="flex items-start justify-between border-b border-slate-800/80 pb-3 mb-4 gap-2">
                         <div class="flex items-center gap-3">
@@ -308,16 +293,12 @@
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center my-auto">
-                        <!-- Koncentryczne pierścienie A / P / Q -->
                         <div class="sm:col-span-5 flex items-center justify-center relative">
                             <svg viewBox="0 0 100 100" class="w-36 h-36 lg:w-44 lg:h-44 -rotate-90">
-                                <!-- Zewnętrzny: Dostępność (A) r=42 -->
                                 <circle cx="50" cy="50" r="42" fill="none" stroke="#1E293B" stroke-width="6"></circle>
                                 <circle id="oee-ring-a" class="hud-ring-segment" cx="50" cy="50" r="42" fill="none" stroke="#F43F5E" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 263.89"></circle>
-                                <!-- Środkowy: Wydajność (P) r=33 -->
                                 <circle cx="50" cy="50" r="33" fill="none" stroke="#1E293B" stroke-width="6"></circle>
                                 <circle id="oee-ring-p" class="hud-ring-segment" cx="50" cy="50" r="33" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 207.35"></circle>
-                                <!-- Wewnętrzny: Jakość (Q) r=24 -->
                                 <circle cx="50" cy="50" r="24" fill="none" stroke="#1E293B" stroke-width="6"></circle>
                                 <circle id="oee-ring-q" class="hud-ring-segment" cx="50" cy="50" r="24" fill="none" stroke="#10B981" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 150.80"></circle>
                             </svg>
@@ -327,7 +308,6 @@
                             </div>
                         </div>
 
-                        <!-- Składowe A, P, Q -->
                         <div class="sm:col-span-7 space-y-2.5">
                             <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5 lg:p-3 flex items-center justify-between">
                                 <div>
@@ -368,17 +348,22 @@
                 </div>
             </div>
 
-            <!-- RZĄD 2 HUD: Realizacja Planu (Palety/Tonaż) + Aktywne Wąskie Gardło -->
+            <!-- RZĄD 2 HUD: Realizacja Planu Produkcji (Syntetyczna Kolejka Live) + Aktywne Wąskie Gardło -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
                 
                 <!-- Realizacja Planu Produkcyjnego -->
                 <div class="lg:col-span-2 glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
-                    <div class="flex items-center justify-between mb-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                         <div class="flex items-center gap-2.5">
                             <i data-lucide="package-check" class="w-5 h-5 text-emerald-400"></i>
                             <div>
-                                <h3 class="font-display font-bold text-sm lg:text-base text-white">Realizacja Planu Spływu (Ciągły Przepływ)</h3>
-                                <p class="text-xs text-slate-400" id="plan-subtitle">Cel okresu oraz wolumen wyprodukowany w wybranym horyzoncie</p>
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-display font-bold text-sm lg:text-base text-white">Realizacja Planu Spływu (Ciągły Przepływ)</h3>
+                                    <span id="live-queue-badge" class="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 font-mono text-[10px] text-emerald-400 flex items-center gap-1 live-flow-pulse">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Kolejka aktywna
+                                    </span>
+                                </div>
+                                <p class="text-xs text-slate-400" id="plan-subtitle">Cel okresu oraz wolumen wyprodukowany</p>
                             </div>
                         </div>
                         <span id="plan-pct-badge" class="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 font-mono text-xs font-bold text-emerald-400">0.0% Planu</span>
@@ -386,27 +371,35 @@
 
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 my-2">
                         <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
-                            <span class="text-[11px] font-mono text-slate-400 uppercase">Cel (Palety)</span>
-                            <div id="kpi-plan-target" class="font-mono font-bold text-lg lg:text-xl text-white mt-0.5">0 szt.</div>
+                            <span class="text-[11px] font-mono text-slate-400 uppercase">Wykonanie / Cel</span>
+                            <div id="kpi-plan-ratio" class="font-mono font-bold text-lg lg:text-xl text-emerald-400 mt-0.5">0 / 0</div>
+                            <span class="text-[10px] font-mono text-slate-500">palet konstrukcyjnych</span>
                         </div>
                         <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
-                            <span class="text-[11px] font-mono text-slate-400 uppercase">Wykonanie</span>
-                            <div id="kpi-plan-actual" class="font-mono font-bold text-lg lg:text-xl text-emerald-400 mt-0.5">0 szt.</div>
+                            <span class="text-[11px] font-mono text-slate-400 uppercase">Pozostało do Celu</span>
+                            <div id="kpi-plan-remaining" class="font-mono font-bold text-lg lg:text-xl text-white mt-0.5">0 szt.</div>
+                            <span class="text-[10px] font-mono text-slate-500">w kolejce zlecenia</span>
                         </div>
                         <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
                             <span class="text-[11px] font-mono text-slate-400 uppercase">Tonaż Stali</span>
                             <div id="kpi-tonnage" class="font-mono font-bold text-lg lg:text-xl text-amber-400 mt-0.5">0.0 t</div>
+                            <span class="text-[10px] font-mono text-slate-500">spływ z linii</span>
                         </div>
                         <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
                             <span class="text-[11px] font-mono text-slate-400 uppercase">Takt Średni</span>
                             <div id="kpi-takt" class="font-mono font-bold text-lg lg:text-xl text-slate-200 mt-0.5">0.0 min</div>
+                            <span class="text-[10px] font-mono text-slate-500">rytm spływu</span>
                         </div>
                     </div>
 
-                    <!-- Pasek postępu -->
-                    <div class="mt-2">
+                    <!-- Pasek postępu + żywy ticker ostatniej wyprodukowanej partii -->
+                    <div class="mt-2 space-y-1.5">
                         <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-                            <div id="plan-progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-1000" style="width: 0%"></div>
+                            <div id="plan-progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-700" style="width: 0%"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                            <span id="live-production-ticker" class="truncate">Ostatni spływ: Oczekiwanie na takt...</span>
+                            <span id="live-queue-order" class="text-amber-400 shrink-0">Zlecenie: #ZL-2026/884</span>
                         </div>
                     </div>
                 </div>
@@ -434,25 +427,39 @@
                 </div>
             </div>
 
-            <!-- RZĄD 3: Siatka Gniazd Produkcyjnych (8 stanowisk ciągu technologicznego) -->
-            <div>
-                <div class="flex flex-wrap items-center justify-between mb-3 gap-2">
-                    <h3 class="font-display font-bold text-sm lg:text-base text-white flex items-center gap-2">
+            <!-- RZĄD 3: Siatka Gniazd Produkcyjnych (Zwijana + Sortowanie od najgorszego OEE + Mini-wykresy) -->
+            <div class="glass-panel rounded-2xl p-4 lg:p-5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2.5">
                         <i data-lucide="cpu" class="w-4 h-4 text-amber-400"></i>
-                        Gniazda Ciągu Technologicznego (Kliknij stanowisko dla parametrów i historii)
-                    </h3>
-                    <span class="text-xs font-mono text-slate-400" id="grid-context-label">Widok zagregowany dla wybranego filtra</span>
+                        <h3 class="font-display font-bold text-sm lg:text-base text-white">
+                            Gniazda Ciągu Technologicznego <span class="text-xs font-mono font-normal text-amber-400">(Sortowanie: Najniższe OEE → Najwyższe)</span>
+                        </h3>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="hidden sm:inline text-xs font-mono text-slate-400" id="grid-context-label">Widok zagregowany</span>
+                        <button onclick="toggleMachinesGridCollapse()" id="btn-toggle-machines" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200 flex items-center gap-1.5 transition-all">
+                            <span id="toggle-machines-label">Zwiń gniazda</span>
+                            <i data-lucide="chevron-up" id="toggle-machines-icon" class="w-4 h-4 text-amber-400"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" id="machines-grid"></div>
+
+                <!-- Kompaktowe podsumowanie widoczne po zwinięciu siatki -->
+                <div id="machines-collapsed-summary" class="hidden mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-300">
+                    <span id="collapsed-summary-text">8 aktywnych gniazd ciągu produkcyjnego • Kliknij „Rozwiń gniazda”, aby wyświetlić karty i wykresy.</span>
+                </div>
+
+                <!-- Rozwijana siatka 8 kart -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mt-4" id="machines-grid"></div>
             </div>
         </section>
 
         <!-- =================================================================== -->
-        <!-- WIDOK 2: SZTAB 5-WHY & CAPA (HUMAN-IN-THE-LOOP + MANAGER OVERRIDE)  -->
+        <!-- WIDOK 2: SZTAB 5-WHY & CAPA                                         -->
         <!-- =================================================================== -->
         <section id="view-capa" class="hidden space-y-5">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <!-- Lewa kolumna: Lista incydentów z wybranego zakresu/zmiany -->
                 <div class="lg:col-span-4 glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
@@ -466,7 +473,6 @@
                     </div>
                 </div>
 
-                <!-- Prawa kolumna: Konsola Analizy Przyczynowej 5-Why AI + Edycja Inżynierska -->
                 <div class="lg:col-span-8 glass-panel rounded-2xl p-4 lg:p-5 space-y-4">
                     <div class="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 gap-2">
                         <div>
@@ -476,7 +482,6 @@
                         <span id="capa-engine-badge" class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 font-mono text-[11px] text-slate-300">Gotowy do wnioskowania</span>
                     </div>
 
-                    <!-- Notatka z Gemba -->
                     <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5">
                         <label class="block text-xs font-mono uppercase text-slate-400 mb-1.5">Obserwacja z Gemba / Wskazówka dla AI (opcjonalnie):</label>
                         <div class="flex flex-col sm:flex-row gap-2">
@@ -488,14 +493,26 @@
                         </div>
                     </div>
 
-                    <!-- Drabina 5-Why + Manager Override -->
+                    <!-- Animowany Pasek Postępu Wnioskowania AI -->
+                    <div id="five-why-progress-box" class="hidden bg-slate-900/95 border border-amber-500/40 rounded-xl p-4 space-y-2.5">
+                        <div class="flex items-center justify-between text-xs font-mono">
+                            <span class="text-amber-400 font-semibold flex items-center gap-2">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                                <span id="five-why-progress-step">Inicjalizacja modelu wnioskowania przyczynowego...</span>
+                            </span>
+                            <span id="five-why-progress-pct" class="text-white font-bold">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                            <div id="five-why-progress-bar" class="h-full bg-gradient-to-r from-amber-500 via-yellow-400 to-emerald-400 transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
                     <div id="five-why-container" class="space-y-2.5">
                         <div class="p-6 text-center border border-dashed border-slate-800 rounded-xl text-xs font-mono text-slate-500">
                             Kliknij dowolną usterkę z rejestru obok, aby uruchomić wnioskowanie przyczynowe 5-Why.
                         </div>
                     </div>
 
-                    <!-- Historia Wdrożonych Działań CAPA -->
                     <div class="pt-4 border-t border-slate-800">
                         <h3 class="font-display font-bold text-sm text-white mb-2.5 flex items-center gap-2">
                             <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
@@ -508,16 +525,15 @@
         </section>
 
         <!-- =================================================================== -->
-        <!-- WIDOK 3: AUDYT 5S VISION (HYBRYDA: JSON BAZA + SESJA LIVE)          -->
+        <!-- WIDOK 3: AUDYT 5S VISION                                            -->
         <!-- =================================================================== -->
         <section id="view-vision5s" class="hidden space-y-5">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <!-- Lewa kolumna: Panel inspekcji wizyjnej -->
                 <div class="lg:col-span-5 glass-panel rounded-2xl p-4 lg:p-5 space-y-4">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                         <h2 class="font-display font-bold text-base text-white flex items-center gap-2">
                             <i data-lucide="camera" class="w-4 h-4 text-amber-400"></i>
-                            Nowa Inspekcja 5S Vision
+                            Nowa Inspekcja 5S Vision (Gemini 2.5 Pro)
                         </h2>
                         <button onclick="openAddStationModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-amber-400 flex items-center gap-1">
                             <i data-lucide="plus" class="w-3.5 h-3.5"></i> Dodaj stanowisko
@@ -535,7 +551,7 @@
                             <div id="vision-upload-placeholder" class="flex flex-col items-center justify-center text-center p-4">
                                 <i data-lucide="upload-cloud" class="w-7 h-7 text-amber-400 mb-1.5"></i>
                                 <p class="text-xs text-slate-300 font-medium">Kliknij, aby wgrać zdjęcie stanowiska</p>
-                                <p class="text-[10px] text-slate-500 font-mono mt-0.5">Automatyczna kompresja i analiza jasności</p>
+                                <p class="text-[10px] text-slate-500 font-mono mt-0.5">Skanowanie 1280px pod kątem 1S–5S i BHP</p>
                             </div>
                             <img id="vision-preview-img" class="hidden w-full h-full object-cover" alt="Podgląd stanowiska">
                             <input type="file" id="vision-file-input" accept="image/*" onchange="handleVisionFileSelect(event)" class="hidden">
@@ -544,7 +560,7 @@
 
                     <div>
                         <label class="block text-xs font-mono text-slate-400 mb-1">Wytyczne Audytora / Uwagi z Obchodu LPA:</label>
-                        <textarea id="vision-notes-input" rows="2" placeholder="np. Zwróć uwagę na odłożenie klucza wiertarskiego, wióry na stole i oznaczenie stref..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 outline-none"></textarea>
+                        <textarea id="vision-notes-input" rows="2" placeholder="np. Zwróć uwagę na odłożenie kluczy, wióry na stole, plątaninę przewodów..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 outline-none"></textarea>
                     </div>
 
                     <button onclick="executeLiveVisionAudit()" id="btn-run-vision" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all">
@@ -553,7 +569,6 @@
                     </button>
                 </div>
 
-                <!-- Prawa kolumna: Wynik bieżącego audytu + Historia LPA z bazy JSON -->
                 <div class="lg:col-span-7 glass-panel rounded-2xl p-4 lg:p-5 space-y-4">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                         <div>
@@ -563,10 +578,8 @@
                         <span id="vision-latest-score-badge" class="px-3 py-1 rounded-lg bg-slate-900 border border-slate-700 font-mono text-xs font-bold text-amber-400">Ocena: —</span>
                     </div>
 
-                    <!-- Wynik ostatniego / wybranego audytu -->
                     <div id="vision-result-panel" class="space-y-3"></div>
 
-                    <!-- Oś czasu historycznych audytów dla tego stanowiska -->
                     <div class="pt-3 border-t border-slate-800">
                         <h3 class="text-xs font-mono uppercase text-slate-400 mb-2.5">Historia Audytów tego Stanowiska:</h3>
                         <div id="vision-history-list" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
@@ -576,7 +589,7 @@
         </section>
 
         <!-- =================================================================== -->
-        <!-- WIDOK 4: STANDARDY OPERACYJNE (SOP) & MATRYCA KOMPETENCJI            -->
+        <!-- WIDOK 4: STANDARDY OPERACYJNE (SOP)                                 -->
         <!-- =================================================================== -->
         <section id="view-standards" class="hidden space-y-5">
             <div class="glass-panel rounded-2xl p-5">
@@ -607,7 +620,7 @@
     <!-- STOPKA SYSTEMOWA -->
     <footer class="border-t border-slate-800/80 bg-slate-950/80 py-3 px-4 sm:px-6 mt-auto">
         <div class="max-w-[1640px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] font-mono text-slate-500">
-            <div>PROTON LEAN OS • Architektura Dual-Core (Gemini AI + Edge Deterministic Engine)</div>
+            <div>PROTON LEAN OS v4.0 • Dual-Model AI (Gemini 2.5 Flash + Gemini 2.5 Pro Vision)</div>
             <div class="flex items-center gap-4">
                 <span id="footer-timeline-range">Horyzont bazy: 30 dni wstecz</span>
                 <button onclick="hardResetSystemData()" class="text-rose-400/80 hover:text-rose-400 underline transition-colors">Resetuj bufor sesji</button>
@@ -639,7 +652,7 @@
                 </h3>
                 <button onclick="closeAiConfigModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
             </div>
-            <p class="text-xs text-slate-400">Wklej klucz Google AI Studio API Key, aby aktywować analizę multimodalną 5S Vision oraz wnioskowanie 5-Why w chmurze. Brak klucza uruchamia deterministyczny silnik Edge Offline.</p>
+            <p class="text-xs text-slate-400">Wklej klucz Google AI Studio API Key, aby aktywować modele <strong>Gemini 2.5 Pro</strong> (5S Vision) oraz <strong>Gemini 2.5 Flash</strong> (Sztab 5-Why).</p>
             <input type="password" id="gemini-key-input" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:border-amber-500 outline-none">
             <div class="flex justify-end gap-2">
                 <button onclick="clearGeminiApiKey()" class="px-3 py-2 rounded-xl bg-slate-800 text-xs font-mono text-rose-400 hover:bg-slate-700">Usuń klucz</button>

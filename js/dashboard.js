@@ -1,17 +1,18 @@
 /**
- * Proton Lean OS - Główny Kontroler Kokpitu i Silnik Osi Czasu (v3.9 Time-Series)
+ * Proton Lean OS - Główny Kontroler Kokpitu i Silnik Osi Czasu (v4.0 Live Flow)
  * - 30-dniowa deterministyczna historia "od teraz wstecz" (zero danych z przyszłości)
  * - Auto-detekcja bieżącej zmiany (I / II / III) z zegara systemowego
- * - Reaktywne przeliczanie OEE (A x P x Q), Pareto, Planu i Wąskiego Gardła
- * - Hybrydowy moduł 5S Vision (data/audits_5s.json + lekki bufor sesji w localStorage)
+ * - Syntetyczna kolejka produkcyjna na żywo (Wykonanie / Cel + spływ partii)
+ * - Sortowanie gniazd od najgorszego do najlepszego OEE + mini-wykresy trendu + zwijanie
+ * - Animowany pasek postępu wnioskowania 5-Why oraz wymuszona animacja pierścieni HUD
  */
 
 const STORAGE_KEYS = {
-    HISTORY_BASELINE: 'proton_history_baseline_v39',
-    LIVE_5S_AUDITS: 'proton_5s_live_audits_v39',
-    CUSTOM_STATIONS: 'proton_5s_custom_stations_v39',
-    APPROVED_CAPAS: 'proton_approved_capas_v39',
-    PUSHPULL_TASKS: 'proton_pushpull_tasks_v39'
+    HISTORY_BASELINE: 'proton_history_baseline_v40',
+    LIVE_5S_AUDITS: 'proton_5s_live_audits_v40',
+    CUSTOM_STATIONS: 'proton_5s_custom_stations_v40',
+    APPROVED_CAPAS: 'proton_approved_capas_v40',
+    PUSHPULL_TASKS: 'proton_pushpull_tasks_v40'
 };
 
 // Katalog 8 gniazd ciągu technologicznego
@@ -37,42 +38,37 @@ const PARETO_CATEGORIES = [
 
 // Globalny stan aplikacji
 const AppState = {
-    selectedShift: 1,         // 1, 2, 3 lub 'ALL'
-    selectedPreset: 'today',  // 'today', 'yesterday', 'wtd', 'last7', 'mtd', 'custom'
+    selectedShift: 1,
+    selectedPreset: 'today',
     dateFrom: '',
     dateTo: '',
-    allEvents: [],            // Połączona pula: 30-dniowy baseline + zdarzenia live z terminala
+    allEvents: [],
     selectedIncidentId: null,
     last5WhyResult: null,
     visionBaseData: { stations: [], audits: [] },
-    currentVisionImageBase64: null
+    currentVisionImageBase64: null,
+    isMachinesGridCollapsed: false,
+    syntheticCompletedBonus: 0, // Dodatkowe jednostki wyprodukowane na żywo od momentu otwarcia aplikacji
+    lastProducedMessage: ''
 };
 
 // =============================================================================
-// 1. INICJALIZACJA SYSTEMU I KONTROLA ZEGARA RZECZYWISTEGO
+// 1. INICJALIZACJA SYSTEMU, ZEGARA I SYNTETYCZNEJ KOLEJKI PRODUKCYJNEJ
 // =============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
-    // 1. Wyznaczenie aktualnego kontekstu czasowego z zegara komputera
     const nowCtx = MESBus.getProductionTimeContext(new Date());
     AppState.selectedShift = nowCtx.shiftId;
     AppState.selectedPreset = 'today';
 
-    // Ustawienie granic kalendarza (max = dzisiaj, min = 30 dni wstecz)
     setupDateInputBounds(nowCtx.dateStr);
     applyPeriodPreset('today', false);
 
-    // 2. Załadowanie lub wygenerowanie 30-dniowej historii wstecz od teraz
     initHistoricalAndLiveEvents();
-
-    // 3. Załadowanie bazy 5S Vision z pliku JSON + lokalnego bufora sesji
     await load5SVisionDatabase();
-
-    // 4. Inicjalizacja kolejki Push-Pull i zatwierdzonych CAPA
     initPushPullAndCapas();
 
-    // 5. Podłączenie szyny telemetrycznej MQTT / Storage
     MESBus.init((isOnline) => {
         console.log('[Dashboard] Status szyny telemetrycznej:', isOnline ? 'ONLINE' : 'OFFLINE');
     });
@@ -81,12 +77,68 @@ document.addEventListener('DOMContentLoaded', async () => {
         handleIncomingTerminalEvent(newLiveEvent);
     });
 
-    // 6. Pierwsze przeliczenie i animacja HUD
     updateAiStatusPill();
     updateLiveClockBadge();
     setInterval(updateLiveClockBadge, 15000);
-    recalculateAndRenderAll();
+
+    // Pierwsze przeliczenie z wymuszoną animacją pierścieni HUD od 0
+    recalculateAndRenderAll(true);
+
+    // Uruchomienie syntetycznej kolejki produkcyjnej na żywo
+    startSyntheticProductionQueue();
 });
+
+function startSyntheticProductionQueue() {
+    const batchItems = [
+        'Rama nośna kontenera 20ft (S355)',
+        'Belka poprzeczna stropowa L=2438',
+        'Słup narożny profil zamknięty CNC',
+        'Pakiet stężeń bocznych po śrutowaniu',
+        'Zespół podłużnicy głównej (Spawanie MIG)',
+        'Kratownica podłogowa po kontroli NDT'
+    ];
+
+    // Ustawienie początkowego komunikatu spływu na podstawie bieżącej godziny
+    const initCtx = MESBus.getProductionTimeContext(new Date());
+    const elapsedInit = getCurrentShiftElapsedRatio(new Date(), initCtx.shiftId);
+    if (elapsedInit <= 0.04) {
+        AppState.lastProducedMessage = `Początek ${initCtx.shiftName} – rozruch linii i nagrzewanie źródeł spawalniczych...`;
+    } else {
+        const m = MACHINES_CATALOG[new Date().getMinutes() % MACHINES_CATALOG.length];
+        const b = batchItems[new Date().getHours() % batchItems.length];
+        AppState.lastProducedMessage = `Ostatni spływ (${initCtx.timeFormatted.slice(0, 5)}): ${b} • Gniazdo ${m.id}`;
+    }
+    updateTickerUI();
+
+    // Co 14 sekund spływa kolejna wyprodukowana jednostka w aktywnej zmianie
+    setInterval(() => {
+        const now = new Date();
+        const nowCtx = MESBus.getProductionTimeContext(now);
+        AppState.syntheticCompletedBonus += 1;
+
+        const m = MACHINES_CATALOG[Math.floor(Math.random() * MACHINES_CATALOG.length)];
+        const b = batchItems[Math.floor(Math.random() * batchItems.length)];
+        const orderNo = `#ZL-2026/${884 + (AppState.syntheticCompletedBonus % 12)}`;
+
+        AppState.lastProducedMessage = `Ostatni spływ (${nowCtx.timeFormatted}): ${b} • Gniazdo ${m.id} (+1 paleta)`;
+        const orderEl = document.getElementById('live-queue-order');
+        if (orderEl) orderEl.textContent = `Zlecenie: ${orderNo}`;
+
+        updateTickerUI();
+
+        // Jeśli użytkownik ogląda dzisiaj lub bieżący tydzień/miesiąc, aktualizujemy licznik planu na żywo
+        if (AppState.dateTo >= nowCtx.dateStr) {
+            recalculateAndRenderAll(false);
+        }
+    }, 14000);
+}
+
+function updateTickerUI() {
+    const tickerEl = document.getElementById('live-production-ticker');
+    if (tickerEl && AppState.lastProducedMessage) {
+        tickerEl.textContent = AppState.lastProducedMessage;
+    }
+}
 
 function setupDateInputBounds(todayStr) {
     const todayDate = new Date(todayStr + 'T12:00:00');
@@ -137,13 +189,12 @@ function initHistoricalAndLiveEvents() {
         const cached = localStorage.getItem(STORAGE_KEYS.HISTORY_BASELINE);
         if (cached) {
             const parsed = JSON.parse(cached);
-            // Sprawdzamy czy baza była wygenerowana dzisiaj; jeśli nie, odświeżamy okno 30 dni wstecz
             if (parsed.anchorDate === nowCtx.dateStr && Array.isArray(parsed.events)) {
                 baseline = parsed.events;
             }
         }
     } catch (e) {
-        console.warn('[Timeline] Błąd odczytu baseline z pamięci:', e);
+        console.warn('[Timeline] Błąd odczytu baseline:', e);
     }
 
     if (baseline.length === 0) {
@@ -154,11 +205,10 @@ function initHistoricalAndLiveEvents() {
                 events: baseline
             }));
         } catch (e) {
-            console.warn('[Timeline] Nie udało się zapisać baseline w localStorage:', e);
+            console.warn('[Timeline] Błąd zapisu baseline:', e);
         }
     }
 
-    // Łączymy deterministyczną bazę historyczną z żywymi meldunkami z terminala
     const liveEvents = MESBus.getStoredLiveEvents();
     AppState.allEvents = [...liveEvents, ...baseline];
 }
@@ -173,43 +223,36 @@ function generate30DaysBackwardBaseline(nowDate, nowCtx) {
         { code: 'M-019', desc: 'Chwilowa korekta czujnika bazowania detalu', cat: 'MICRO', baseMin: 7 }
     ];
 
-    // Iterujemy od 30 dni wstecz do dnia dzisiejszego (0)
     for (let daysAgo = 30; daysAgo >= 0; daysAgo--) {
         const d = new Date(nowCtx.dateStr + 'T12:00:00');
         d.setDate(d.getDate() - daysAgo);
         const dateStr = formatDateISO(d);
-        const dayOfWeek = d.getDay(); // 0 = Niedziela, 6 = Sobota
+        const dayOfWeek = d.getDay();
 
-        // W weekendy mniejsza intensywność lub brak produkcji (np. tylko sobota zmiana I)
         if (dayOfWeek === 0) continue;
         const maxShiftsForDay = dayOfWeek === 6 ? 1 : 3;
 
         for (let shiftId = 1; shiftId <= maxShiftsForDay; shiftId++) {
-            // KRYTYCZNA BLOKADA PRZYSZŁOŚCI:
-            // Jeśli analizujemy dzień dzisiejszy (daysAgo === 0), pomijamy zmiany, które jeszcze się nie zaczęły!
             if (daysAgo === 0 && shiftId > nowCtx.shiftId) {
                 continue;
             }
 
-            // Deterministyczny generator pseudolosowy oparty na dacie i zmianie (stałe wyniki dla historii)
             const seedBase = (daysAgo * 31) + (shiftId * 17);
-            const eventsCount = (seedBase % 3) + 2; // od 2 do 4 zdarzeń na zmianę
+            const eventsCount = (seedBase % 3) + 2;
 
-            // Jeśli to dzisiaj i aktywna zmiana, skalujemy liczbę zdarzeń proporcjonalnie do upływu czasu zmiany
             let effectiveCount = eventsCount;
             if (daysAgo === 0 && shiftId === nowCtx.shiftId) {
                 const progress = getCurrentShiftElapsedRatio(nowDate, shiftId);
-                effectiveCount = Math.max(1, Math.floor(eventsCount * progress));
+                effectiveCount = progress < 0.04 ? 0 : Math.max(1, Math.floor(eventsCount * progress));
             }
 
             for (let i = 0; i < effectiveCount; i++) {
                 const hash = (seedBase + i * 13);
                 const machine = MACHINES_CATALOG[hash % MACHINES_CATALOG.length];
 
-                // Profil zmianowy: Zmiana III ma więcej mikroprzestojów i awarii UR, Zmiana I więcej SMED/Logistyki
                 let faultIndex = (hash + shiftId) % sampleFaults.length;
-                if (shiftId === 3 && i === 0) faultIndex = 1; // UR na nocnej zmianie
-                if (shiftId === 1 && i === 0) faultIndex = 3; // SMED na dziennej zmianie
+                if (shiftId === 3 && i === 0) faultIndex = 1;
+                if (shiftId === 1 && i === 0) faultIndex = 3;
 
                 const fault = sampleFaults[faultIndex];
                 const durationMin = fault.baseMin + ((hash % 12) - 4);
@@ -239,10 +282,10 @@ function generate30DaysBackwardBaseline(nowDate, nowCtx) {
         }
     }
 
-    return events.reverse(); // Najnowsze na górze
+    return events.reverse();
 }
 
-// Wylicza jaki ułamek (0.05 - 1.0) aktualnej 8-godzinnej zmiany już upłynął
+// Wylicza jaki ułamek (0.0 - 1.0) aktualnej 8-godzinnej zmiany już upłynął
 function getCurrentShiftElapsedRatio(nowDate, shiftId) {
     const h = nowDate.getHours();
     const m = nowDate.getMinutes();
@@ -256,16 +299,16 @@ function getCurrentShiftElapsedRatio(nowDate, shiftId) {
         minutesIntoShift = h >= 22 ? (h - 22) * 60 + m : (h + 2) * 60 + m;
     }
 
-    return Math.max(0.08, Math.min(1.0, minutesIntoShift / 480));
+    return Math.max(0.0, Math.min(1.0, minutesIntoShift / 480));
 }
 
 // =============================================================================
-// 3. OBSŁUGA FILTRÓW ZMIAN I OKRESÓW (REAKTYWNY SILNIK AGREGACJI)
+// 3. OBSŁUGA FILTRÓW ZMIAN I OKRESÓW (Z WYMUSZONĄ ANIMACJĄ HUD)
 // =============================================================================
 function setShiftFilter(shiftVal) {
     AppState.selectedShift = shiftVal;
     updateShiftButtonsUI();
-    recalculateAndRenderAll();
+    recalculateAndRenderAll(true);
 }
 
 function updateShiftButtonsUI() {
@@ -291,9 +334,7 @@ function applyPeriodPreset(preset, triggerRender = true) {
     let fromDate = new Date(todayDate);
     let toDate = new Date(todayDate);
 
-    if (preset === 'today') {
-        // dzisiaj - dzisiaj
-    } else if (preset === 'yesterday') {
+    if (preset === 'yesterday') {
         fromDate.setDate(todayDate.getDate() - 1);
         toDate.setDate(todayDate.getDate() - 1);
     } else if (preset === 'wtd') {
@@ -316,7 +357,7 @@ function applyPeriodPreset(preset, triggerRender = true) {
     }
 
     updateShiftButtonsUI();
-    if (triggerRender) recalculateAndRenderAll();
+    if (triggerRender) recalculateAndRenderAll(true);
 }
 
 function onCustomDateChange() {
@@ -335,7 +376,7 @@ function onCustomDateChange() {
     const presetSelect = document.getElementById('period-preset');
     if (presetSelect) presetSelect.value = 'custom';
 
-    recalculateAndRenderAll();
+    recalculateAndRenderAll(true);
 }
 
 function resetToCurrentLiveShift() {
@@ -345,9 +386,9 @@ function resetToCurrentLiveShift() {
 }
 
 // =============================================================================
-// 4. GŁÓWNA FUNKCJA PRZELICZAJĄCA WSKAŹNIKI (OEE, PARETO, PLAN, WĄSKIE GARDŁO)
+// 4. GŁÓWNA FUNKCJA PRZELICZAJĄCA WSKAŹNIKI (OEE, PARETO, PLAN, MASZYNY)
 // =============================================================================
-function recalculateAndRenderAll() {
+function recalculateAndRenderAll(animateRingsFromZero = false) {
     const now = new Date();
     const nowCtx = MESBus.getProductionTimeContext(now);
     const isSingleToday = (AppState.dateFrom === nowCtx.dateStr && AppState.dateTo === nowCtx.dateStr);
@@ -355,7 +396,6 @@ function recalculateAndRenderAll() {
         AppState.selectedShift !== 'ALL' &&
         Number(AppState.selectedShift) > nowCtx.shiftId;
 
-    // Obsługa banera dla zmiany, która dzisiaj jeszcze się nie zaczęła
     const banner = document.getElementById('future-shift-banner');
     if (banner) {
         if (isFutureShiftToday) {
@@ -367,17 +407,17 @@ function recalculateAndRenderAll() {
         }
     }
 
-    // 1. Filtrowanie zdarzeń wpadających w wybrany zakres dat oraz zmianę
+    // 1. Filtrowanie zdarzeń
     const filteredEvents = AppState.allEvents.filter(ev => {
         const inDateRange = ev.dateStr >= AppState.dateFrom && ev.dateStr <= AppState.dateTo;
         const inShift = AppState.selectedShift === 'ALL' || Number(ev.shiftId) === Number(AppState.selectedShift);
         return inDateRange && inShift;
     });
 
-    // 2. Wyliczenie nominalnego czasu pracy (w minutach) dla wybranego horyzontu
-    const activeShiftMinutes = calculateNominalHorizonMinutes(now, nowCtx, isFutureShiftToday);
+    // 2. Czas nominalny oraz czas, który faktycznie upłynął w wybranym oknie
+    const timeMetrics = calculateHorizonTimeMetrics(now, nowCtx, isFutureShiftToday);
 
-    // 3. Agregacja Pareto (5 kategorii strat)
+    // 3. Agregacja Pareto
     const paretoTotals = { LOGISTICS: 0, MAINTENANCE: 0, TOOLING: 0, SMED: 0, MICRO: 0 };
     let totalDowntimeMin = 0;
 
@@ -387,52 +427,46 @@ function recalculateAndRenderAll() {
         totalDowntimeMin += Number(ev.durationMin || 0);
     });
 
-    renderParetoHUD(paretoTotals, totalDowntimeMin);
+    renderParetoHUD(paretoTotals, totalDowntimeMin, animateRingsFromZero);
 
     // 4. Wyliczenie Globalnego OEE (A x P x Q)
     let availPct = 0, perfPct = 0, qualPct = 0, oeePct = 0;
 
-    if (!isFutureShiftToday && activeShiftMinutes > 0) {
-        // Dostępność (A) = (Czas nominalny - Straty przestojów) / Czas nominalny
-        // Dzielimy przestoje przez liczbę równoległych gniazd (3 główne strumienie) dla realizmu linii
+    if (!isFutureShiftToday && timeMetrics.elapsedMinutes > 5) {
         const effectiveLineDowntime = totalDowntimeMin / 3.2;
-        availPct = Math.max(42.0, Math.min(98.5, ((activeShiftMinutes - effectiveLineDowntime) / activeShiftMinutes) * 100));
-
-        // Wydajność (P) różni się lekko w zależności od zmiany (Zmiana II ma najwyższe tempo, III nocna niższe)
+        availPct = Math.max(42.0, Math.min(98.5, ((timeMetrics.elapsedMinutes - effectiveLineDowntime) / timeMetrics.elapsedMinutes) * 100));
         const shiftPerfFactor = AppState.selectedShift === 2 ? 91.4 : (AppState.selectedShift === 3 ? 86.2 : 89.5);
-        perfPct = Math.max(70.0, shiftPerfFactor - (filteredEvents.length * 0.15));
-
-        // Jakość (Q) - First Time Yield
+        perfPct = Math.max(70.0, shiftPerfFactor - (filteredEvents.length * 0.12));
         qualPct = AppState.selectedShift === 3 ? 97.9 : 98.8;
-
         oeePct = (availPct / 100) * (perfPct / 100) * (qualPct / 100) * 100;
     }
 
-    renderOeeHUD(availPct, perfPct, qualPct, oeePct);
+    renderOeeHUD(availPct, perfPct, qualPct, oeePct, animateRingsFromZero);
 
-    // 5. Wyliczenie Realizacji Planu (Palety, Tonaż, Takt)
-    renderProductionPlanHUD(activeShiftMinutes, oeePct, isFutureShiftToday);
+    // 5. Realizacja Planu w formacie Wykonanie / Cel (np. 20 / 34 lub 54 / 98)
+    renderProductionPlanHUD(timeMetrics, oeePct, isFutureShiftToday, nowCtx);
 
-    // 6. Detekcja Wąskiego Gardła dla wybranego zakresu/zmiany
+    // 6. Wąskie gardło
     renderBottleneckCard(filteredEvents, isFutureShiftToday);
 
-    // 7. Renderowanie Siatki 8 Maszyn + Rejestru Incydentów w Sztabie 5-Why
-    renderMachinesGrid(filteredEvents, activeShiftMinutes, isFutureShiftToday);
+    // 7. Siatka 8 Maszyn (posortowana od najgorszego do najlepszego OEE) + Incydenty
+    renderMachinesGrid(filteredEvents, timeMetrics.elapsedMinutes, isFutureShiftToday);
     renderIncidentsList(filteredEvents);
 }
 
-// Oblicza ile minut produkcji przypada na wybrane okno czasu (uwzględniając tylko czas do "teraz")
-function calculateNominalHorizonMinutes(nowDate, nowCtx, isFutureShiftToday) {
-    if (isFutureShiftToday) return 0;
+// Zwraca zarówno pełny planowany czas okresu (scheduledMinutes), jak i minuty, które już upłynęły (elapsedMinutes)
+function calculateHorizonTimeMetrics(nowDate, nowCtx, isFutureShiftToday) {
+    if (isFutureShiftToday) return { scheduledMinutes: 480, elapsedMinutes: 0 };
 
     const start = new Date(AppState.dateFrom + 'T12:00:00');
     const end = new Date(AppState.dateTo + 'T12:00:00');
-    let totalMinutes = 0;
+    let scheduledMinutes = 0;
+    let elapsedMinutes = 0;
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dStr = formatDateISO(d);
         const dow = d.getDay();
-        if (dow === 0) continue; // Niedziela wolna
+        if (dow === 0) continue;
 
         const shiftsInDay = dow === 6 ? [1] : [1, 2, 3];
 
@@ -441,52 +475,74 @@ function calculateNominalHorizonMinutes(nowDate, nowCtx, isFutureShiftToday) {
                 return;
             }
 
+            scheduledMinutes += 480;
+
             if (dStr === nowCtx.dateStr) {
-                // Dla dzisiejszego dnia liczymy pełne 480 min tylko dla zmian zakończonych,
-                // a dla bieżącej zmiany tylko minuty, które już upłynęły!
                 if (sId < nowCtx.shiftId) {
-                    totalMinutes += 480;
+                    elapsedMinutes += 480;
                 } else if (sId === nowCtx.shiftId) {
-                    totalMinutes += Math.round(480 * getCurrentShiftElapsedRatio(nowDate, sId));
+                    elapsedMinutes += Math.round(480 * getCurrentShiftElapsedRatio(nowDate, sId));
                 }
             } else if (dStr < nowCtx.dateStr) {
-                totalMinutes += 480;
+                elapsedMinutes += 480;
             }
         });
     }
 
-    return totalMinutes;
+    return { scheduledMinutes, elapsedMinutes };
 }
 
 // =============================================================================
-// 5. RENDEROWANIE KOMPONENTÓW HUD (PARETO, OEE, PLAN, WĄSKIE GARDŁO, MASZYNY)
+// 5. RENDEROWANIE KOMPONENTÓW HUD (PARETO, OEE, PLAN WYKONANIE/CEL, MASZYNY)
 // =============================================================================
-function renderParetoHUD(paretoTotals, totalDowntimeMin) {
+function renderParetoHUD(paretoTotals, totalDowntimeMin, animateFromZero) {
     document.getElementById('pareto-total-badge').textContent = `Suma: ${totalDowntimeMin} min`;
     document.getElementById('pareto-center-val').textContent = totalDowntimeMin;
 
-    // Sortujemy kategorie malejąco według minut strat
     const sorted = PARETO_CATEGORIES.map(cat => ({
         ...cat,
         minutes: paretoTotals[cat.id] || 0,
         pct: totalDowntimeMin > 0 ? ((paretoTotals[cat.id] || 0) / totalDowntimeMin) * 100 : 0
     })).sort((a, b) => b.minutes - a.minutes);
 
-    const circumference = 2 * Math.PI * 40; // ~251.33
-    let cumulativeOffset = 0;
+    const circumference = 2 * Math.PI * 40;
     const legendContainer = document.getElementById('pareto-legend-list');
     legendContainer.innerHTML = '';
 
-    sorted.forEach((item, idx) => {
-        const ringEl = document.getElementById(`pareto-ring-${idx + 1}`);
-        if (ringEl) {
-            ringEl.setAttribute('stroke', item.color);
-            const segLength = (item.pct / 100) * circumference;
-            ringEl.style.strokeDasharray = `${segLength} ${circumference}`;
-            ringEl.style.strokeDashoffset = `-${cumulativeOffset}`;
-            cumulativeOffset += segLength;
+    // Jeśli żądamy świeżej animacji, najpierw zerujemy pierścienie
+    if (animateFromZero) {
+        for (let idx = 0; idx < 5; idx++) {
+            const rEl = document.getElementById(`pareto-ring-${idx + 1}`);
+            if (rEl) {
+                rEl.style.transition = 'none';
+                rEl.style.strokeDasharray = `0 ${circumference}`;
+                rEl.style.strokeDashoffset = '0';
+            }
         }
+    }
 
+    const applyRings = () => {
+        let cumulativeOffset = 0;
+        sorted.forEach((item, idx) => {
+            const ringEl = document.getElementById(`pareto-ring-${idx + 1}`);
+            if (ringEl) {
+                ringEl.style.transition = '';
+                ringEl.setAttribute('stroke', item.color);
+                const segLength = (item.pct / 100) * circumference;
+                ringEl.style.strokeDasharray = `${segLength} ${circumference}`;
+                ringEl.style.strokeDashoffset = `-${cumulativeOffset}`;
+                cumulativeOffset += segLength;
+            }
+        });
+    };
+
+    if (animateFromZero) {
+        requestAnimationFrame(() => requestAnimationFrame(applyRings));
+    } else {
+        applyRings();
+    }
+
+    sorted.forEach((item, idx) => {
         const row = document.createElement('div');
         row.className = 'bg-slate-900/75 border border-slate-800/90 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs';
         row.innerHTML = `
@@ -500,7 +556,7 @@ function renderParetoHUD(paretoTotals, totalDowntimeMin) {
     });
 }
 
-function renderOeeHUD(availPct, perfPct, qualPct, oeePct) {
+function renderOeeHUD(availPct, perfPct, qualPct, oeePct, animateFromZero) {
     document.getElementById('oee-top-badge').textContent = `${oeePct.toFixed(1)}%`;
     document.getElementById('oee-center-val').textContent = `${oeePct.toFixed(1)}%`;
     document.getElementById('oee-val-a').textContent = `${availPct.toFixed(1)}%`;
@@ -517,35 +573,71 @@ function renderOeeHUD(availPct, perfPct, qualPct, oeePct) {
         diffEl.className = diff >= 0 ? 'text-emerald-400 font-semibold' : 'text-amber-400 font-semibold';
     }
 
-    // Aktualizacja pierścieni SVG (obwody: r=42 -> 263.89, r=33 -> 207.35, r=24 -> 150.80)
-    const setRing = (id, pct, radius) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        const c = 2 * Math.PI * radius;
-        const dash = (pct / 100) * c;
-        el.style.strokeDasharray = `${dash} ${c}`;
+    const ringsConfig = [
+        { id: 'oee-ring-a', pct: availPct, r: 42 },
+        { id: 'oee-ring-p', pct: perfPct, r: 33 },
+        { id: 'oee-ring-q', pct: qualPct, r: 24 }
+    ];
+
+    if (animateFromZero) {
+        ringsConfig.forEach(cfg => {
+            const el = document.getElementById(cfg.id);
+            if (el) {
+                const c = 2 * Math.PI * cfg.r;
+                el.style.transition = 'none';
+                el.style.strokeDasharray = `0 ${c}`;
+            }
+        });
+    }
+
+    const applyOeeRings = () => {
+        ringsConfig.forEach(cfg => {
+            const el = document.getElementById(cfg.id);
+            if (el) {
+                el.style.transition = '';
+                const c = 2 * Math.PI * cfg.r;
+                const dash = (cfg.pct / 100) * c;
+                el.style.strokeDasharray = `${dash} ${c}`;
+            }
+        });
     };
 
-    setRing('oee-ring-a', availPct, 42);
-    setRing('oee-ring-p', perfPct, 33);
-    setRing('oee-ring-q', qualPct, 24);
+    if (animateFromZero) {
+        requestAnimationFrame(() => requestAnimationFrame(applyOeeRings));
+    } else {
+        applyOeeRings();
+    }
 }
 
-function renderProductionPlanHUD(activeMinutes, oeePct, isFutureShiftToday) {
-    // Cel nominalny: ~34 palety na 8-godzinną zmianę (480 min)
-    const targetPalettes = isFutureShiftToday ? 0 : Math.max(1, Math.round((activeMinutes / 480) * 34));
-    const efficiencyFactor = oeePct > 0 ? (oeePct / 74.0) : 0;
-    const actualPalettes = isFutureShiftToday ? 0 : Math.round(targetPalettes * Math.min(1.04, efficiencyFactor));
+function renderProductionPlanHUD(timeMetrics, oeePct, isFutureShiftToday, nowCtx) {
+    // Cel całego wybranego okresu (np. 34 szt. na zmianę, 98 szt. na pełną dobę 3 zmian)
+    const shiftsCount = timeMetrics.scheduledMinutes / 480;
+    const targetTotal = Math.max(1, Math.round(shiftsCount * 32.67)); // 3 zmiany = 98 szt., 1 zmiana = 33 szt.
 
-    const planPct = targetPalettes > 0 ? (actualPalettes / targetPalettes) * 100 : 0;
-    const tonnage = actualPalettes * 0.68; // Średnio 680 kg stali na paletę konstrukcyjną
-    const avgTakt = actualPalettes > 0 ? (activeMinutes / actualPalettes) : 0;
+    let actualProduced = 0;
+    if (!isFutureShiftToday && timeMetrics.elapsedMinutes > 5) {
+        const elapsedRatio = timeMetrics.elapsedMinutes / timeMetrics.scheduledMinutes;
+        const oeeMultiplier = oeePct > 0 ? Math.min(1.02, oeePct / 74.0) : 0.85;
+        actualProduced = Math.round(targetTotal * elapsedRatio * oeeMultiplier);
 
-    document.getElementById('kpi-plan-target').textContent = `${targetPalettes} szt.`;
-    document.getElementById('kpi-plan-actual').textContent = `${actualPalettes} szt.`;
+        // Jeśli okno obejmuje bieżącą zmianę, doliczamy jednostki wyprodukowane na żywo przez syntetyczną kolejkę
+        if (AppState.dateTo >= nowCtx.dateStr &&
+            (AppState.selectedShift === 'ALL' || Number(AppState.selectedShift) === nowCtx.shiftId)) {
+            actualProduced = Math.min(targetTotal, actualProduced + AppState.syntheticCompletedBonus);
+        }
+    }
+
+    const remaining = Math.max(0, targetTotal - actualProduced);
+    const planPct = targetTotal > 0 ? (actualProduced / targetTotal) * 100 : 0;
+    const tonnage = actualProduced * 0.68;
+    const avgTakt = actualProduced > 0 ? (timeMetrics.elapsedMinutes / actualProduced) : 0;
+
+    // Wyświetlenie ułamka np. 20 / 33 lub 54 / 98
+    document.getElementById('kpi-plan-ratio').textContent = `${actualProduced} / ${targetTotal}`;
+    document.getElementById('kpi-plan-remaining').textContent = `${remaining} szt.`;
     document.getElementById('kpi-tonnage').textContent = `${tonnage.toFixed(1)} t`;
     document.getElementById('kpi-takt').textContent = `${avgTakt.toFixed(1)} min`;
-    document.getElementById('plan-pct-badge').textContent = `${planPct.toFixed(1)}% Planu`;
+    document.getElementById('plan-pct-badge').textContent = `${planPct.toFixed(1)}% Celu`;
     document.getElementById('plan-progress-bar').style.width = `${Math.min(100, planPct)}%`;
 
     const shiftLabel = AppState.selectedShift === 'ALL' ? 'Pełna Doba (I–III)' : `Zmiana ${AppState.selectedShift}`;
@@ -567,7 +659,6 @@ function renderBottleneckCard(filteredEvents, isFutureShiftToday) {
         return;
     }
 
-    // Sumujemy minuty strat per maszyna w wybranym oknie
     const machineLosses = {};
     filteredEvents.forEach(ev => {
         if (!machineLosses[ev.machineId]) {
@@ -594,13 +685,36 @@ function renderBottleneckCard(filteredEvents, isFutureShiftToday) {
     lossEl.textContent = `-${worst.totalCost.toLocaleString('pl-PL')} PLN`;
     dtBadge.innerHTML = `Strata w okresie: <strong class="text-rose-400">${worst.totalMin} min</strong>`;
 
-    // Domyślnie podpinamy top usterkę wąskiego gardła pod przycisk analizy 5-Why
     if (!AppState.selectedIncidentId) {
         AppState.selectedIncidentId = worst.topEvent.id;
     }
 }
 
-function renderMachinesGrid(filteredEvents, activeMinutes, isFutureShiftToday) {
+// =============================================================================
+// 6. GNIAZDA CIĄGU TECHNOLOGICZNEGO (SORTOWANIE OD NAJGORSZEGO OEE + WYKRESY)
+// =============================================================================
+function toggleMachinesGridCollapse() {
+    AppState.isMachinesGridCollapsed = !AppState.isMachinesGridCollapsed;
+    const grid = document.getElementById('machines-grid');
+    const summary = document.getElementById('machines-collapsed-summary');
+    const label = document.getElementById('toggle-machines-label');
+    const icon = document.getElementById('toggle-machines-icon');
+
+    if (AppState.isMachinesGridCollapsed) {
+        grid.classList.add('hidden');
+        summary.classList.remove('hidden');
+        label.textContent = 'Rozwiń gniazda';
+        icon.setAttribute('data-lucide', 'chevron-down');
+    } else {
+        grid.classList.remove('hidden');
+        summary.classList.add('hidden');
+        label.textContent = 'Zwiń gniazda';
+        icon.setAttribute('data-lucide', 'chevron-up');
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function renderMachinesGrid(filteredEvents, elapsedMinutes, isFutureShiftToday) {
     const grid = document.getElementById('machines-grid');
     if (!grid) return;
     grid.innerHTML = '';
@@ -608,43 +722,121 @@ function renderMachinesGrid(filteredEvents, activeMinutes, isFutureShiftToday) {
     const shiftText = AppState.selectedShift === 'ALL' ? 'Wszystkie zmiany' : `Zmiana ${AppState.selectedShift}`;
     document.getElementById('grid-context-label').textContent = `Zakres: ${AppState.dateFrom} – ${AppState.dateTo} | ${shiftText}`;
 
-    MACHINES_CATALOG.forEach(m => {
+    const todayStr = MESBus.getProductionTimeContext().dateStr;
+
+    // 1. Wyliczamy pełne metryki A, P, Q, OEE oraz trend 5-słupkowy dla każdego gniazda
+    const enrichedMachines = MACHINES_CATALOG.map((m, idx) => {
         const mEvents = filteredEvents.filter(e => e.machineId === m.id);
         const downtimeMin = mEvents.reduce((acc, e) => acc + e.durationMin, 0);
-        const hasLiveAlert = mEvents.some(e => e.isLiveEvent && e.dateStr === MESBus.getProductionTimeContext().dateStr);
+        const hasLiveAlert = mEvents.some(e => e.isLiveEvent && e.dateStr === todayStr);
 
-        let machineOee = 0;
-        if (!isFutureShiftToday && activeMinutes > 0) {
-            const avail = Math.max(45, ((activeMinutes - downtimeMin) / activeMinutes) * 100);
-            machineOee = avail * 0.89 * 0.985;
+        let avail = 0, perf = 0, qual = 0, oee = 0;
+        if (!isFutureShiftToday && elapsedMinutes > 5) {
+            avail = Math.max(40, Math.min(99, ((elapsedMinutes - downtimeMin) / elapsedMinutes) * 100));
+            perf = Math.max(72, 92 - (idx % 4) * 2.1 - (mEvents.length * 0.4));
+            qual = 98.2 + (idx % 3) * 0.4;
+            oee = (avail / 100) * (perf / 100) * (qual / 100) * 100;
         }
 
-        const isCritical = downtimeMin > 25 || hasLiveAlert;
+        // Generujemy 5 słupków trendu OEE z ostatnich punktów pomiarowych (zakończonych na bieżącym OEE)
+        const sparkBars = isFutureShiftToday ? [0, 0, 0, 0, 0] : [
+            Math.max(45, Math.min(96, oee + ((idx % 3) - 1) * 5)),
+            Math.max(45, Math.min(96, oee - ((idx % 2) * 4) + 2)),
+            Math.max(45, Math.min(96, oee + 3)),
+            Math.max(45, Math.min(96, oee - 2)),
+            oee
+        ];
+
+        return {
+            ...m,
+            events: mEvents,
+            downtimeMin,
+            hasLiveAlert,
+            avail,
+            perf,
+            qual,
+            oee,
+            sparkBars
+        };
+    });
+
+    // 2. Sortowanie rosnąco: OD NAJGORSZEGO OEE DO NAJLEPSZEGO (Management by Exception)
+    enrichedMachines.sort((a, b) => a.oee - b.oee);
+
+    // Aktualizacja paska podsumowania (widocznego po zwinięciu sekcji)
+    const collapsedSummary = document.getElementById('collapsed-summary-text');
+    if (collapsedSummary && enrichedMachines.length > 0) {
+        const worst = enrichedMachines[0];
+        const best = enrichedMachines[enrichedMachines.length - 1];
+        collapsedSummary.innerHTML = `Najniższe OEE: <strong class="text-rose-400">${worst.id} (${worst.oee.toFixed(1)}%)</strong> • Najwyższe OEE: <strong class="text-emerald-400">${best.id} (${best.oee.toFixed(1)}%)</strong> • Kliknij „Rozwiń gniazda”, aby zobaczyć pełną analitykę 8 stanowisk.`;
+    }
+
+    // 3. Renderowanie kart z paskiem A/P/Q i mini-wykresem słupkowym trendu
+    enrichedMachines.forEach((m, rankIdx) => {
+        const isCritical = (!isFutureShiftToday && (m.oee < 68 || m.downtimeMin > 25 || m.hasLiveAlert));
         const statusDotClass = isFutureShiftToday
             ? 'bg-slate-600'
             : (isCritical ? 'bg-rose-500 animate-ping' : 'bg-emerald-400');
 
+        const oeeTextColor = m.oee === 0
+            ? 'text-slate-500'
+            : (m.oee < 68 ? 'text-rose-400' : (m.oee < 78 ? 'text-amber-400' : 'text-emerald-400'));
+
         const card = document.createElement('div');
-        card.onclick = () => openMachineDetailModal(m, mEvents, machineOee, downtimeMin);
-        card.className = `glass-card rounded-2xl p-3.5 cursor-pointer relative overflow-hidden ${isCritical ? 'border-rose-500/40 bg-rose-950/10' : ''}`;
+        card.onclick = () => openMachineDetailModal(m, m.events, m.oee, m.downtimeMin);
+        card.className = `glass-card rounded-2xl p-3.5 cursor-pointer relative overflow-hidden flex flex-col justify-between ${isCritical ? 'border-rose-500/45 bg-rose-950/15' : ''}`;
+
+        // Budowa 5 mini-słupków trendu OEE
+        const sparkHtml = m.sparkBars.map((val, bIdx) => {
+            const barColor = val === 0 ? 'bg-slate-800' : (val < 68 ? 'bg-rose-500' : (val < 78 ? 'bg-amber-400' : 'bg-emerald-400'));
+            const isLast = bIdx === 4;
+            return `<div class="flex-1 bg-slate-900 rounded-t-sm h-7 flex items-end overflow-hidden" title="T-${4 - bIdx}: ${val.toFixed(1)}%">
+                        <div class="w-full ${barColor} ${isLast ? 'opacity-100' : 'opacity-55'} transition-all duration-500" style="height: ${Math.max(8, val)}%"></div>
+                    </div>`;
+        }).join('');
+
         card.innerHTML = `
-            <div class="flex items-center justify-between mb-2">
-                <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono text-[10px] font-bold text-amber-400">${m.id}</span>
-                <div class="flex items-center gap-1.5">
-                    ${hasLiveAlert ? '<span class="px-1.5 py-0.2 rounded bg-rose-500 text-white font-mono text-[9px] font-bold">LIVE</span>' : ''}
-                    <span class="w-2 h-2 rounded-full ${statusDotClass}"></span>
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-1.5">
+                        <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono text-[10px] font-bold text-amber-400">${m.id}</span>
+                        ${rankIdx === 0 && !isFutureShiftToday && m.oee > 0 ? '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 font-mono text-[9px] text-rose-300 font-bold">PRIORYTET #1</span>' : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        ${m.hasLiveAlert ? '<span class="px-1.5 py-0.2 rounded bg-rose-500 text-white font-mono text-[9px] font-bold">LIVE</span>' : ''}
+                        <span class="w-2 h-2 rounded-full ${statusDotClass}"></span>
+                    </div>
                 </div>
+                <h4 class="font-display font-bold text-sm text-white truncate">${m.name}</h4>
+                <p class="text-[11px] text-slate-400 mb-2.5">${m.area}</p>
             </div>
-            <h4 class="font-display font-bold text-sm text-white truncate">${m.name}</h4>
-            <p class="text-[11px] text-slate-400 mb-3">${m.area}</p>
-            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-xs font-mono">
+
+            <!-- Sekcja wykresów na karcie gniazda -->
+            <div class="space-y-2.5 pt-2 border-t border-slate-800/80">
+                <!-- Pasek składowych A / P / Q -->
                 <div>
-                    <span class="text-[10px] text-slate-500 block">OEE Gniazda</span>
-                    <span class="font-bold ${machineOee >= 75 ? 'text-emerald-400' : (machineOee > 0 ? 'text-amber-400' : 'text-slate-500')}">${machineOee.toFixed(1)}%</span>
+                    <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1">
+                        <span>A:${m.avail.toFixed(0)}%</span>
+                        <span>P:${m.perf.toFixed(0)}%</span>
+                        <span>Q:${m.qual.toFixed(0)}%</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden flex gap-0.5">
+                        <div class="h-full bg-rose-500" style="width: ${m.avail / 3}%"></div>
+                        <div class="h-full bg-amber-400" style="width: ${m.perf / 3}%"></div>
+                        <div class="h-full bg-emerald-400" style="width: ${m.qual / 3}%"></div>
+                    </div>
                 </div>
-                <div class="text-right">
-                    <span class="text-[10px] text-slate-500 block">Przestoje</span>
-                    <span class="font-bold ${downtimeMin > 0 ? 'text-rose-400' : 'text-slate-400'}">${downtimeMin} min</span>
+
+                <!-- Mini-wykres słupkowy trendu + OEE i Przestoje -->
+                <div class="flex items-end justify-between gap-3 pt-1">
+                    <div class="w-20 flex items-end gap-1 shrink-0">
+                        ${sparkHtml}
+                    </div>
+                    <div class="text-right font-mono">
+                        <span class="text-[10px] text-slate-500 block">OEE / Straty</span>
+                        <span class="font-bold text-xs ${oeeTextColor}">${m.oee.toFixed(1)}%</span>
+                        <span class="text-[11px] text-slate-400"> / <strong class="${m.downtimeMin > 0 ? 'text-rose-400' : 'text-slate-400'}">${m.downtimeMin}m</strong></span>
+                    </div>
                 </div>
             </div>
         `;
@@ -653,18 +845,15 @@ function renderMachinesGrid(filteredEvents, activeMinutes, isFutureShiftToday) {
 }
 
 // =============================================================================
-// 6. ODBIÓR MELDUNKÓW NA ŻYWO Z TERMINALA (MQTT / STORAGE)
+// 7. ODBIÓR MELDUNKÓW NA ŻYWO Z TERMINALA (MQTT / STORAGE)
 // =============================================================================
 function handleIncomingTerminalEvent(liveEvent) {
-    // Dodajemy na początek puli zdarzeń
     if (!AppState.allEvents.some(e => e.id === liveEvent.id)) {
         AppState.allEvents.unshift(liveEvent);
     }
 
-    // Jeśli użytkownik ogląda dzisiaj i zmianę pasującą do zdarzenia (lub Pełną Dobę / W-T-D), odświeżamy natychmiast
-    recalculateAndRenderAll();
+    recalculateAndRenderAll(false);
 
-    // Dodajemy automatyczne zadanie do kolejki Push-Pull
     addPushPullTask({
         title: `Awaria Live: ${liveEvent.machineName} (${liveEvent.machineId})`,
         desc: `${liveEvent.faultDescription} • Strata: ${liveEvent.durationMin} min (${liveEvent.shiftName})`,
@@ -673,7 +862,7 @@ function handleIncomingTerminalEvent(liveEvent) {
 }
 
 // =============================================================================
-// 7. MODUŁ 5S VISION (HYBRYDA: BAZA JSON + LEKKI BUFOR SESJI)
+// 8. MODUŁ 5S VISION (HYBRYDA: BAZA JSON + LEKKI BUFOR SESJI)
 // =============================================================================
 async function load5SVisionDatabase() {
     let baseData = { stations: [], audits: [] };
@@ -684,7 +873,7 @@ async function load5SVisionDatabase() {
             baseData = await res.json();
         }
     } catch (e) {
-        console.warn('[5S Vision] Nie udało się pobrać data/audits_5s.json, używam awaryjnego słownika:', e);
+        console.warn('[5S Vision] Nie udało się pobrać data/audits_5s.json:', e);
         baseData = {
             stations: [
                 { id: 'ws_weld', name: 'Spawanie Manualne MIG/MAG', code: 'S-02', area: 'Spawalnia PK1' },
@@ -694,7 +883,6 @@ async function load5SVisionDatabase() {
         };
     }
 
-    // Dołączamy własne stanowiska dodane w trakcie sesji
     const customStations = JSON.parse(localStorage.getItem(STORAGE_KEYS.CUSTOM_STATIONS) || '[]');
     const liveAudits = JSON.parse(localStorage.getItem(STORAGE_KEYS.LIVE_5S_AUDITS) || '[]');
 
@@ -754,7 +942,7 @@ async function executeLiveVisionAudit() {
     };
 
     btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Analiza multimodalna 5S...`;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Skanowanie 1S–5S i BHP (Gemini 2.5 Pro)...`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
@@ -769,20 +957,17 @@ async function executeLiveVisionAudit() {
             stationId: station.id,
             timestamp: `${nowCtx.dateStr} ${nowCtx.timeFormatted.slice(0, 5)}`,
             ...report,
-            // Zapisujemy lekką miniaturę tylko w sesji, aby nie zapchać localStorage
             imageBase64: AppState.currentVisionImageBase64 ? await createTinyThumbnail(AppState.currentVisionImageBase64) : null
         };
 
         AppState.visionBaseData.audits.unshift(newRecord);
 
-        // Zapisujemy maksymalnie 4 najnowsze inspekcje sesji w localStorage (ochrona przed QuotaExceededError)
         const liveAudits = JSON.parse(localStorage.getItem(STORAGE_KEYS.LIVE_5S_AUDITS) || '[]');
         liveAudits.unshift(newRecord);
         if (liveAudits.length > 4) liveAudits.length = 4;
         try {
             localStorage.setItem(STORAGE_KEYS.LIVE_5S_AUDITS, JSON.stringify(liveAudits));
         } catch (storageErr) {
-            console.warn('[5S Vision] Bufor zdjęć pełny, czyszczenie starszych miniatur.');
             localStorage.removeItem(STORAGE_KEYS.LIVE_5S_AUDITS);
         }
 
@@ -877,7 +1062,7 @@ function render5SAuditHistory() {
 }
 
 // =============================================================================
-// 8. SZTAB KRYZYSOWY 5-WHY & MANAGER OVERRIDE
+// 9. SZTAB KRYZYSOWY 5-WHY Z ANIMOWANYM PASKIEM POSTĘPU
 // =============================================================================
 function renderIncidentsList(filteredEvents) {
     const listEl = document.getElementById('incidents-list');
@@ -917,7 +1102,7 @@ function selectIncidentForCapa(incidentId) {
     if (!ev) return;
 
     document.getElementById('capa-selected-title').textContent = `${ev.machineName} (${ev.machineId}) – ${ev.faultDescription}`;
-    recalculateAndRenderAll();
+    recalculateAndRenderAll(false);
 }
 
 function openBottleneckInCapa() {
@@ -937,11 +1122,47 @@ async function run5WhyAnalysis() {
 
     const btn = document.getElementById('btn-run-5why');
     const note = document.getElementById('gemba-note-input').value;
+    const progressBox = document.getElementById('five-why-progress-box');
+    const progressBar = document.getElementById('five-why-progress-bar');
+    const progressStep = document.getElementById('five-why-progress-step');
+    const progressPct = document.getElementById('five-why-progress-pct');
+
     btn.disabled = true;
-    btn.textContent = 'Wnioskowanie 5-Why...';
+    progressBox.classList.remove('hidden');
+    progressBar.style.width = '10%';
+    progressPct.textContent = '10%';
+    progressStep.textContent = '1/4 Pobieranie telemetrii gniazda i kodu błędu...';
+
+    // Animacja etapów diagnostycznych w trakcie oczekiwania na odpowiedź modelu
+    const stageTimers = [
+        setTimeout(() => {
+            progressBar.style.width = '38%';
+            progressPct.textContent = '38%';
+            progressStep.textContent = '2/4 Korelacja przestoju z historią TPM i przezbrojeń SMED...';
+        }, 350),
+        setTimeout(() => {
+            progressBar.style.width = '68%';
+            progressPct.textContent = '68%';
+            progressStep.textContent = '3/4 Wnioskowanie przyczynowe 5-Why (Gemini 2.5 Flash)...';
+        }, 850),
+        setTimeout(() => {
+            progressBar.style.width = '88%';
+            progressPct.textContent = '88%';
+            progressStep.textContent = '4/4 Walidacja BHP oraz generowanie zadania CAPA...';
+        }, 1500)
+    ];
 
     try {
         const res = await GeminiEngine.analyzeIncident(ev, note);
+        stageTimers.forEach(clearTimeout);
+
+        progressBar.style.width = '100%';
+        progressPct.textContent = '100%';
+        progressStep.textContent = 'Analiza zakończona!';
+
+        await new Promise(r => setTimeout(r, 260));
+        progressBox.classList.add('hidden');
+
         AppState.last5WhyResult = { incident: ev, ...res };
         document.getElementById('capa-engine-badge').textContent = res.source;
 
@@ -975,6 +1196,7 @@ async function run5WhyAnalysis() {
             </div>
         `;
     } finally {
+        stageTimers.forEach(clearTimeout);
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4"></i> Generuj Analizę 5-Why`;
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -985,7 +1207,6 @@ function approveCapaAction() {
     if (!AppState.last5WhyResult) return;
     const capaText = document.getElementById('edit-capa-text').value.trim();
 
-    // AI Safety Interlock: blokada niebezpiecznych poleceń omijających BHP
     const dangerKeywords = ['zmostkuj', 'wyłącz kurtyn', 'omiń czujnik', 'zablokuj krańcówk', 'bez osłon'];
     if (dangerKeywords.some(kw => capaText.toLowerCase().includes(kw))) {
         alert('BLOKADA AI SAFETY INTERLOCK: Wykryto polecenie naruszające integralność systemów bezpieczeństwa BHP/Poka-Yoke. Zapis odrzucony!');
@@ -1028,7 +1249,7 @@ function renderApprovedCapas() {
 }
 
 // =============================================================================
-// 9. NAWIGACJA, MODALE, KOLEJKA PUSH-PULL I RESET SESJI
+// 10. NAWIGACJA, MODALE, KOLEJKA PUSH-PULL I RESET SESJI
 // =============================================================================
 function switchMainTab(tabName) {
     ['cockpit', 'capa', 'vision5s', 'standards'].forEach(t => {
@@ -1142,7 +1363,7 @@ function updateAiStatusPill() {
     const dot = document.getElementById('ai-status-dot');
     const lbl = document.getElementById('ai-status-label');
     if (dot) dot.className = `w-2 h-2 rounded-full ${active ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`;
-    if (lbl) lbl.textContent = active ? 'AI: Gemini Cloud Live' : 'AI: Edge Offline';
+    if (lbl) lbl.textContent = active ? 'AI: Gemini 2.5 Pro/Flash' : 'AI: Edge Offline';
 }
 
 function openAddStationModal() {
