@@ -1,13 +1,13 @@
 /**
- * Proton Lean OS - Silnik Wnioskowania AI Dual-Core (v4.0)
- * - 5-Why / Root Cause: gemini-2.5-flash (szybka analiza tekstowa + strukturalny JSON)
- * - 5S Vision Audyt LPA: gemini-2.5-pro (głęboka analiza wizyjna wysokiej rozdzielczości 1280px)
+ * Proton Lean OS - Silnik Wnioskowania AI Dual-Core (v4.1)
+ * - 5-Why / Root Cause: gemini-3.8-flash (szybka analiza tekstowa + strukturalny JSON)
+ * - 5S Vision Audyt LPA: gemini-3.8-flash (głęboka analiza wizyjna wysokiej rozdzielczości 1280px)
  * - Pełny deterministyczny silnik awaryjny Edge Offline (Poka-Yoke + reguły TPM/SMED)
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
-const MODEL_TEXT_5WHY = 'gemini-2.5-flash';
-const MODEL_VISION_5S = 'gemini-2.5-pro';
+const MODEL_TEXT_5WHY = 'gemini-3.8-flash';
+const MODEL_VISION_5S = 'gemini-3.8-flash';
 
 const ENGINE_TIMEOUT_5WHY_MS = 12000;
 const ENGINE_TIMEOUT_VISION_MS = 22000;
@@ -28,7 +28,7 @@ const GeminiEngine = {
 
     hasActiveApiKey() {
         const k = this.getApiKey();
-        return k.length > 20 && k.startsWith('AIza');
+        return k.length > 20 && !k.startsWith('/*');
     },
 
     getEndpoint(modelName) {
@@ -36,7 +36,7 @@ const GeminiEngine = {
     },
 
     // =========================================================================
-    // 1. ANALIZA PRZYCZYNOWA 5-WHY (gemini-2.5-flash + Edge Fallback)
+    // 1. ANALIZA PRZYCZYNOWA 5-WHY (gemini-3.8-flash + Edge Fallback)
     // =========================================================================
     async analyzeIncident(incident, humanNote = '') {
         if (!this.hasActiveApiKey()) {
@@ -123,14 +123,13 @@ WYMAGANIA:
     },
 
     // =========================================================================
-    // 2. AUDYT WIZYJNY 5S VISION (gemini-2.5-pro + Skan Siatkowy Niezgodności)
+    // 2. AUDYT WIZYJNY 5S VISION (gemini-3.8-flash + Skan Siatkowy Niezgodności)
     // =========================================================================
     async analyzeVisual5S(imageBase64, station, auditorNotes = '') {
         if (!imageBase64) {
             return this.runLocalVisionFallback(station, auditorNotes, 'Brak zdjęcia – ocena na podstawie wywiadu LPA');
         }
 
-        // Pre-flight check: kompresja do 1280px (wysoka ostrość detali dla 2.5 Pro) + test jasności
         const prepared = await this.prepareImageForVision(imageBase64);
         if (prepared.isTooDark) {
             return {
@@ -237,7 +236,6 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
 
             const parsed = JSON.parse(rawText);
 
-            // Matematyczny Poka-Yoke: wymuszenie dokładnej średniej arytmetycznej z 5 filarów
             const clamp = (v) => Math.max(1.0, Math.min(5.0, Number(v) || 2.5));
             const s1 = clamp(parsed.s1);
             const s2 = clamp(parsed.s2);
@@ -262,7 +260,6 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
         }
     },
 
-    // Kompresja obrazu do 1280px (optymalna ostrość szczegółów) + kontrola jasności klatki
     prepareImageForVision(dataUrl) {
         return new Promise((resolve) => {
             const img = new Image();
@@ -278,7 +275,6 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, w, h);
 
-                // Szybki pomiar luminancji pikseli (Poka-Yoke na czarny/zasłonięty obraz)
                 const imgData = ctx.getImageData(0, 0, w, h).data;
                 let totalLum = 0;
                 const step = 16;
