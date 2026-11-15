@@ -3,873 +3,687 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proton Lean OS v3.0 - AI Operations Platform</title>
-    <!-- Tailwind CSS CDN -->
+    <title>Proton Lean OS | System Zarządzania Ciągłym Przepływem i AI</title>
+    <!-- Wektorowy Favicon SVG (eliminacja błędu 404 w konsoli) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B0F19'/%3E%3Cpath d='M18 4L8 18h7l-1 10 10-14h-7l1-10z' fill='%23F59E0B'/%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons CDN -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Klient MQTT przez WebSocket -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Space Grotesk', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
                     colors: {
-                        graphite: {
-                            950: '#0e1218',
-                            900: '#151b24',
-                            850: '#1d2532',
-                            800: '#263142',
-                            750: '#324055',
-                            700: '#41526b',
-                            600: '#556a89',
-                        },
-                        gold: {
-                            300: '#fef08a',
-                            400: '#fde047',
-                            450: '#facc15',
-                            500: '#eab308',
-                            600: '#ca8a04',
-                            700: '#a16207',
-                        }
+                        obsidian: '#0B0F19',
+                        slatepanel: '#111827',
+                        slatecard: '#161E2E',
+                        amberaccent: '#F59E0B',
+                        emeraldaccent: '#10B981',
+                        crimsonaccent: '#F43F5E',
                     }
                 }
             }
         }
     </script>
-    <link rel="stylesheet" href="css/style.css">
     <style>
-        .chart-hud-ring {
-            transition: stroke-dashoffset 3.0s cubic-bezier(0.16, 1, 0.3, 1);
+        body {
+            background-color: #0B0F19;
+            color: #F8FAFC;
+            background-image: radial-gradient(circle at 50% 0%, #172033 0%, #0B0F19 65%);
+            min-height: 100vh;
+        }
+
+        /* Wymuszenie ciemnego schematu przeglądarki i widocznych białych/złotych ikon kalendarza */
+        input[type="date"] {
+            color-scheme: dark;
+            color: #F8FAFC !important;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.85) sepia(0.9) saturate(3.5) hue-rotate(5deg);
+            cursor: pointer;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
+
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-card {
+            background: rgba(22, 30, 46, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: all 0.2s ease;
+        }
+        .glass-card:hover {
+            border-color: rgba(245, 158, 11, 0.35);
+            transform: translateY(-1px);
+        }
+        .tab-active {
+            background: rgba(245, 158, 11, 0.14);
+            color: #F59E0B;
+            border-color: rgba(245, 158, 11, 0.45);
+        }
+        .shift-btn-active {
+            background-color: #F59E0B;
+            color: #0B0F19;
+            font-weight: 700;
+            box-shadow: 0 0 14px rgba(245, 158, 11, 0.35);
+        }
+
+        /* 3-sekundowa płynna animacja pierścieni SVG HUD */
+        .hud-ring-segment {
+            transition: stroke-dasharray 3s cubic-bezier(0.22, 1, 0.36, 1),
+                        stroke-dashoffset 3s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0B0F19;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1E293B;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
         }
     </style>
 </head>
-<body class="bg-graphite-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-gold-500/30 selection:text-gold-300">
+<body class="antialiased selection:bg-amber-500 selection:text-slate-950 flex flex-col">
 
-    <!-- Kontener TOAST -->
-    <div id="toast-container" class="fixed top-24 right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-md w-full"></div>
-
-    <!-- PULL-NOTIFICATION DRAWER (Szuflada MES) -->
-    <aside id="notification-drawer" class="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] bg-graphite-900 border-l-2 border-gold-500/50 shadow-2xl transform translate-x-full transition-transform duration-300 flex flex-col">
-        <div class="p-5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-11 h-11 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-bold border border-gold-400/40">
-                    <i data-lucide="inbox" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <h3 class="text-sm font-extrabold text-white uppercase tracking-wider">Kolejka Zdarzeń Shop-Floor</h3>
-                    <p class="text-xs text-slate-300 font-mono-numbers">Trwały bufor zdarzeń (localStorage)</p>
-                </div>
-            </div>
-            <button onclick="toggleNotificationDrawer()" class="p-2.5 rounded-xl bg-graphite-850 hover:bg-graphite-800 text-slate-300 hover:text-white transition">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-        </div>
-
-        <div class="p-4 bg-graphite-900/90 border-b border-graphite-750 flex items-center justify-between text-xs font-semibold">
-            <span class="text-slate-300">Zdarzenia w rejestrze: <strong id="drawer-count-badge" class="text-gold-400 font-mono-numbers font-bold">0</strong></span>
-            <button onclick="clearEventBuffer()" class="text-xs text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Wyczyść bufor
-            </button>
-        </div>
-
-        <div id="drawer-events-list" class="flex-1 overflow-y-auto p-4 space-y-3.5">
-            <div class="p-8 text-center text-slate-400 text-xs">
-                Brak oczekujących zdarzeń w kolejce. Wszystkie meldunki zostały obsłużone.
-            </div>
-        </div>
-
-        <div class="p-4 bg-graphite-950 border-t border-graphite-750 text-xs text-slate-400 flex items-center justify-between">
-            <span>Inżynier decyduje o pobraniu usterki do 5-Why</span>
-            <span class="font-mono-numbers text-gold-400 font-bold">Zasada Push-Pull</span>
-        </div>
-    </aside>
-
-    <!-- Top Navigation Bar -->
-    <header class="bg-graphite-900 border-b-2 border-gold-500/40 sticky top-0 z-40 shadow-xl backdrop-blur-md">
-        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
-            
-            <div class="flex items-center gap-3.5 cursor-pointer flex-shrink-0" onclick="switchTab('dashboard')">
-                <div class="w-12 h-12 rounded-xl bg-gold-500/15 border-2 border-gold-400 flex items-center justify-center text-gold-400 shadow-lg shadow-gold-500/10">
-                    <i data-lucide="cpu" class="w-7 h-7"></i>
+    <!-- GÓRNY PASEK NAWIGACJI -->
+    <header class="sticky top-0 z-40 glass-panel border-b border-slate-800/80">
+        <div class="max-w-[1640px] mx-auto px-3 sm:px-6 h-16 lg:h-20 flex items-center justify-between gap-2">
+            <!-- Logo i identyfikacja -->
+            <div class="flex items-center gap-3 shrink-0">
+                <div class="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                    <i data-lucide="zap" class="w-5 h-5 text-amber-400"></i>
                 </div>
                 <div>
                     <div class="flex items-center gap-2">
-                        <span class="font-extrabold text-xl tracking-wider text-white">PROTON<span class="text-gold-400">LEAN</span></span>
-                        <span class="text-xs font-mono-numbers font-bold bg-gold-500/20 text-gold-300 border border-gold-400/50 px-2 py-0.5 rounded-md">v3.0 PRO</span>
+                        <span class="font-display font-bold text-lg lg:text-xl tracking-tight text-white">PROTON <span class="text-amber-400">LEAN OS</span></span>
+                        <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 rounded border border-slate-700">v3.9 MES</span>
                     </div>
-                    <p class="text-xs text-slate-300 font-medium tracking-tight">Heavy Fabrication & Assembly Management OS</p>
+                    <p class="text-[11px] text-slate-400 font-mono hidden md:block">Zakład Konstrukcji Stalowych • Ciągły Przepływ & AI</p>
                 </div>
             </div>
 
-            <!-- Tabs -->
-            <nav class="hidden lg:flex items-center gap-3 bg-graphite-950/90 p-2 rounded-2xl border border-graphite-750 shadow-inner">
-                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 shadow-md transition">
-                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Kokpit Główny
+            <!-- Nawigacja główna (Desktop >= 1024px) -->
+            <nav class="hidden lg:flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+                <button onclick="switchMainTab('cockpit')" id="nav-cockpit" class="tab-active px-3.5 py-2 rounded-lg text-xs font-medium border border-transparent flex items-center gap-2 transition-all">
+                    <i data-lucide="activity" class="w-4 h-4"></i>
+                    Kokpit Operacyjny
                 </button>
-                <button onclick="switchTab('capa')" id="nav-capa" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
-                    <i data-lucide="shield-alert" class="w-4 h-4 text-gold-400"></i> Sztab 5-Why (CAPA)
+                <button onclick="switchMainTab('capa')" id="nav-capa" class="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white border border-transparent flex items-center gap-2 transition-all">
+                    <i data-lucide="brain-circuit" class="w-4 h-4"></i>
+                    Sztab 5-Why & CAPA
+                    <span id="badge-active-incidents" class="px-1.5 py-0.2 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded text-[10px] font-mono">0</span>
                 </button>
-                <button onclick="switchTab('audit5s')" id="nav-audit5s" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
-                    <i data-lucide="scan" class="w-4 h-4 text-gold-400"></i> 5S Vision
+                <button onclick="switchMainTab('vision5s')" id="nav-vision5s" class="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white border border-transparent flex items-center gap-2 transition-all">
+                    <i data-lucide="scan-eye" class="w-4 h-4"></i>
+                    Audyt 5S Vision
                 </button>
-                <button onclick="switchTab('whatif')" id="nav-whatif" class="nav-btn flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-graphite-850 transition">
-                    <i data-lucide="sliders" class="w-4 h-4 text-gold-400"></i> Symulator What-If
+                <button onclick="switchMainTab('standards')" id="nav-standards" class="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white border border-transparent flex items-center gap-2 transition-all">
+                    <i data-lucide="book-open-check" class="w-4 h-4"></i>
+                    Standardy & SOP
                 </button>
             </nav>
 
-            <!-- Akcje i Status AI -->
-            <div class="flex items-center gap-3 flex-shrink-0">
-                <button onclick="toggleNotificationDrawer()" id="btn-notification-bell" class="relative p-2.5 rounded-xl bg-graphite-950 hover:bg-graphite-850 border-2 border-graphite-750 text-slate-200 hover:text-gold-400 transition shadow-sm">
-                    <i data-lucide="bell" class="w-5 h-5"></i>
-                    <span id="bell-counter-badge" class="hidden absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-mono-numbers text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center border-2 border-graphite-900 animate-bounce">0</span>
+            <!-- Prawa strefa akcji: Dzwonek + Terminal + Konfiguracja AI -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <!-- Przycisk Kolejki Zadań Push-Pull -->
+                <button onclick="togglePushPullDrawer()" class="relative p-2 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/50 text-slate-300 hover:text-amber-400 transition-all" title="Kolejka Zadań Push-Pull">
+                    <i data-lucide="bell" class="w-4 h-4 lg:w-5 lg:h-5"></i>
+                    <span id="pushpull-counter" class="absolute -top-1 -right-1 w-4 h-4 lg:w-5 lg:h-5 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold flex items-center justify-center shadow-lg">3</span>
                 </button>
 
-                <a href="terminal.html" target="_blank" class="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gold-500/10 hover:bg-gold-500/20 border-2 border-gold-400/80 text-gold-300 text-xs font-extrabold transition shadow-sm">
-                    <i data-lucide="external-link" class="w-4 h-4"></i> Otwórz Terminal MES
+                <!-- Przycisk otwierający Terminal Operatorski -->
+                <a href="terminal.html" target="_blank" class="px-2.5 lg:px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition-all">
+                    <i data-lucide="tablet-smartphone" class="w-4 h-4 text-emerald-400"></i>
+                    <span class="hidden sm:inline">Terminal</span>
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 </a>
 
-                <div class="hidden sm:flex items-center gap-1.5">
-                    <div id="ai-global-status" class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 text-xs font-mono-numbers font-bold shadow-sm cursor-pointer" onclick="openApiKeyModal()" title="Kliknij, aby skonfigurować silnik AI">
-                        <span id="ai-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span id="ai-status-text">Silnik AI: Edge / Live</span>
-                    </div>
-                    <button onclick="openApiKeyModal()" title="Konfiguracja klucza Gemini API (Google AI Studio)" class="p-2 rounded-xl bg-graphite-950 hover:bg-graphite-850 border-2 border-graphite-750 text-slate-300 hover:text-gold-400 transition shadow-sm">
-                        <i data-lucide="settings" class="w-4 h-4"></i>
-                    </button>
-                </div>
+                <!-- Status Silnika Gemini AI -->
+                <button onclick="openAiConfigModal()" id="ai-status-pill" class="px-2.5 lg:px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700 hover:border-amber-500/50 text-xs font-mono flex items-center gap-2 transition-all">
+                    <span id="ai-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                    <span id="ai-status-label" class="text-slate-300 hidden md:inline">AI: Edge Offline</span>
+                    <span id="ai-status-label-short" class="text-slate-300 md:hidden">AI</span>
+                    <i data-lucide="settings" class="w-3.5 h-3.5 text-slate-400"></i>
+                </button>
             </div>
+        </div>
+
+        <!-- Pasek nawigacji dla mniejszych monitorów i tabletów (< 1024px) -->
+        <div class="lg:hidden border-t border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto">
+            <button onclick="switchMainTab('cockpit')" id="mob-nav-cockpit" class="tab-active shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border border-transparent flex items-center gap-1.5">
+                <i data-lucide="activity" class="w-3.5 h-3.5"></i> Kokpit
+            </button>
+            <button onclick="switchMainTab('capa')" id="mob-nav-capa" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-transparent flex items-center gap-1.5">
+                <i data-lucide="brain-circuit" class="w-3.5 h-3.5"></i> 5-Why & CAPA
+            </button>
+            <button onclick="switchMainTab('vision5s')" id="mob-nav-vision5s" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-transparent flex items-center gap-1.5">
+                <i data-lucide="scan-eye" class="w-3.5 h-3.5"></i> 5S Vision
+            </button>
+            <button onclick="switchMainTab('standards')" id="mob-nav-standards" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-transparent flex items-center gap-1.5">
+                <i data-lucide="book-open-check" class="w-3.5 h-3.5"></i> SOP
+            </button>
         </div>
     </header>
 
-    <!-- TAB 1: KOKPIT GŁÓWNY -->
-    <main id="tab-dashboard" class="tab-content flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div class="bg-graphite-900 border border-graphite-750 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-                <span class="text-xs font-extrabold uppercase tracking-wider text-gold-400 flex items-center gap-2">
-                    <i data-lucide="sun-medium" class="w-4 h-4"></i> Zmiana Robocza:
-                </span>
-                <div class="inline-flex p-1.5 bg-graphite-950 rounded-xl border border-graphite-750 gap-1.5">
-                    <button onclick="setShift(1)" id="shift-btn-1" class="shift-btn px-4 py-2 rounded-lg text-xs font-extrabold bg-gold-500 text-graphite-950 font-mono-numbers shadow transition">I (06-14)</button>
-                    <button onclick="setShift(2)" id="shift-btn-2" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 font-mono-numbers transition">II (14-22)</button>
-                    <button onclick="setShift(3)" id="shift-btn-3" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 font-mono-numbers transition">III (22-06)</button>
-                    <button onclick="setShift('all')" id="shift-btn-all" class="shift-btn px-4 py-2 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 font-mono-numbers transition">Pełna Doba</button>
+    <!-- GŁÓWNA PRZESTRZEŃ ROBOCZA -->
+    <main class="max-w-[1640px] w-full mx-auto px-3 sm:px-6 py-4 lg:py-5 flex-1">
+
+        <!-- =================================================================== -->
+        <!-- WIDOK 1: KOKPIT OPERACYJNY (OEE, PARETO, TAKT CIĄGŁY, MASZYNY)      -->
+        <!-- =================================================================== -->
+        <section id="view-cockpit" class="space-y-4 lg:space-y-5">
+
+            <!-- Pasek Filtrów Zmianowych i Zakresu Czasu (Dynamiczna Oś Czasu) -->
+            <div class="glass-panel rounded-2xl p-3 lg:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mr-1">
+                        <i data-lucide="sun-moon" class="w-4 h-4 text-amber-400"></i>
+                        Zmiana Robocza:
+                    </span>
+                    <div class="inline-flex flex-wrap bg-slate-950/90 p-1 rounded-xl border border-slate-800 gap-1" id="shift-selector-group">
+                        <button onclick="setShiftFilter(1)" data-shift="1" class="shift-btn px-3 py-1.5 rounded-lg text-xs font-mono transition-all text-slate-400 hover:text-white">I (06-14)</button>
+                        <button onclick="setShiftFilter(2)" data-shift="2" class="shift-btn px-3 py-1.5 rounded-lg text-xs font-mono transition-all text-slate-400 hover:text-white">II (14-22)</button>
+                        <button onclick="setShiftFilter(3)" data-shift="3" class="shift-btn px-3 py-1.5 rounded-lg text-xs font-mono transition-all text-slate-400 hover:text-white">III (22-06)</button>
+                        <button onclick="setShiftFilter('ALL')" data-shift="ALL" class="shift-btn px-3 py-1.5 rounded-lg text-xs font-mono transition-all text-slate-400 hover:text-white">Pełna Doba</button>
+                    </div>
+                    <span id="live-shift-indicator" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-mono text-emerald-400">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        <span id="live-clock-badge">Zegar aktywny</span>
+                    </span>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-mono uppercase text-slate-400">Okres:</span>
+                        <select id="period-preset" onchange="applyPeriodPreset(this.value)" class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-slate-200 focus:border-amber-500 outline-none cursor-pointer">
+                            <option value="today">Dziś (Bieżąca doba)</option>
+                            <option value="yesterday">Wczoraj (Zamknięta doba)</option>
+                            <option value="wtd" selected>Bieżący tydzień (W-T-D)</option>
+                            <option value="last7">Ostatnie 7 dni</option>
+                            <option value="mtd">Ostatnie 30 dni (M-T-D)</option>
+                            <option value="custom">Zakres niestandardowy</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-slate-200">
+                        <input type="date" id="date-from" onchange="onCustomDateChange()" class="bg-transparent outline-none text-xs font-mono text-slate-100">
+                        <span class="text-slate-500">–</span>
+                        <input type="date" id="date-to" onchange="onCustomDateChange()" class="bg-transparent outline-none text-xs font-mono text-slate-100">
+                    </div>
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-3">
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Okres:</span>
-                    <select id="period-select" onchange="renderMachines()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500">
-                        <option value="today">Dziś (Bieżąca zmiana)</option>
-                        <option value="yesterday">Wczoraj (Bilans 24h)</option>
-                        <option value="wtd" selected>Bieżący tydzień (W-T-D)</option>
-                        <option value="last_week">Poprzedni tydzień</option>
-                        <option value="mtd">Bieżący miesiąc (M-T-D)</option>
-                    </select>
+            <!-- Baner informacyjny dla nierozpoczętej zmiany lub okresu bez danych -->
+            <div id="future-shift-banner" class="hidden glass-panel border-amber-500/40 bg-amber-500/10 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="clock" class="w-5 h-5 text-amber-400 shrink-0"></i>
+                    <p class="text-xs font-mono text-amber-200" id="future-shift-text">Wybrana zmiana jeszcze się nie rozpoczęła zgodnie z zegarem systemowym.</p>
                 </div>
-
-                <div class="flex items-center gap-2 bg-graphite-950 border border-graphite-750 px-3.5 py-2 rounded-xl text-xs font-mono-numbers font-semibold">
-                    <i data-lucide="calendar" class="w-4 h-4 text-gold-400"></i>
-                    <input type="date" value="2026-10-26" class="bg-transparent text-slate-200 focus:outline-none text-xs font-bold">
-                    <span class="text-gold-500 font-bold">-</span>
-                    <input type="date" value="2026-10-30" class="bg-transparent text-slate-200 focus:outline-none text-xs font-bold">
-                </div>
+                <button onclick="resetToCurrentLiveShift()" class="px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-xs shrink-0 hover:bg-amber-400 transition-all">
+                    Wróć do aktywnej zmiany
+                </button>
             </div>
-        </div>
 
-        <!-- Pierścienie HUD OEE i Pareto -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-                <div>
-                    <div class="flex justify-between items-center pb-4 border-b border-graphite-750">
+            <!-- RZĄD 1 HUD: Struktura Pareto Przestojów + Globalne OEE Ciągu -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
+                
+                <!-- Karta 1: Struktura Pareto Przestojów (Pierścień SVG + 5 przyczyn) -->
+                <div class="glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
+                    <div class="flex items-start justify-between border-b border-slate-800/80 pb-3 mb-4 gap-2">
                         <div class="flex items-center gap-3">
-                            <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="pie-chart" class="w-5 h-5"></i></span>
+                            <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                                <i data-lucide="pie-chart" class="w-4 h-4"></i>
+                            </div>
                             <div>
-                                <h3 class="text-sm sm:text-base font-extrabold text-white">Struktura Pareto Przestojów (Udział w Stratach Czasu)</h3>
+                                <h2 class="font-display font-bold text-sm lg:text-base text-white">Struktura Pareto Przestojów (Udział w Stratach)</h2>
                                 <p class="text-xs text-slate-400">Klasyfikacja przyczyn strat ciągłego przepływu</p>
                             </div>
                         </div>
-                        <span id="pareto-total-time" class="text-xs font-mono-numbers font-extrabold text-gold-400 bg-gold-500/10 border border-gold-400/40 px-3 py-1.5 rounded-lg">
-                            Suma: 148 min strat
-                        </span>
+                        <span id="pareto-total-badge" class="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 font-mono text-xs font-bold text-amber-400 shrink-0">Suma: 0 min</span>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
-                        <div class="md:col-span-5 flex flex-col items-center justify-center">
-                            <div class="relative w-48 h-48">
-                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <circle cx="50" cy="50" r="42" stroke="#1d2532" stroke-width="8" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="42" stroke="#f43f5e" stroke-width="8" stroke-dasharray="90.0 173.9" stroke-dashoffset="0" stroke-linecap="butt" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="42" stroke="#f59e0b" stroke-width="8" stroke-dasharray="66.8 197.1" stroke-dashoffset="-92.0" stroke-linecap="butt" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="42" stroke="#eab308" stroke-width="8" stroke-dasharray="47.0 216.9" stroke-dashoffset="-160.8" stroke-linecap="butt" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="42" stroke="#64748b" stroke-width="8" stroke-dasharray="32.8 231.1" stroke-dashoffset="-209.8" stroke-linecap="butt" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="42" stroke="#334155" stroke-width="8" stroke-dasharray="20.2 243.7" stroke-dashoffset="-243.6" stroke-linecap="butt" fill="transparent"/>
-                                </svg>
-                                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span id="donut-pareto-minutes" class="text-2xl font-extrabold font-mono-numbers text-white tracking-tight">148</span>
-                                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Minut Łącznie</span>
-                                </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center my-auto">
+                        <!-- Wykres pierścieniowy SVG Pareto -->
+                        <div class="sm:col-span-5 flex items-center justify-center relative">
+                            <svg viewBox="0 0 100 100" class="w-36 h-36 lg:w-44 lg:h-44 -rotate-90 drop-shadow-[0_0_12px_rgba(244,63,94,0.15)]">
+                                <circle cx="50" cy="50" r="40" fill="none" stroke="#1E293B" stroke-width="10"></circle>
+                                <circle id="pareto-ring-1" class="hud-ring-segment" cx="50" cy="50" r="40" fill="none" stroke="#F43F5E" stroke-width="10" stroke-dasharray="0 251.33" stroke-dashoffset="0"></circle>
+                                <circle id="pareto-ring-2" class="hud-ring-segment" cx="50" cy="50" r="40" fill="none" stroke="#F59E0B" stroke-width="10" stroke-dasharray="0 251.33" stroke-dashoffset="0"></circle>
+                                <circle id="pareto-ring-3" class="hud-ring-segment" cx="50" cy="50" r="40" fill="none" stroke="#EAB308" stroke-width="10" stroke-dasharray="0 251.33" stroke-dashoffset="0"></circle>
+                                <circle id="pareto-ring-4" class="hud-ring-segment" cx="50" cy="50" r="40" fill="none" stroke="#64748B" stroke-width="10" stroke-dasharray="0 251.33" stroke-dashoffset="0"></circle>
+                                <circle id="pareto-ring-5" class="hud-ring-segment" cx="50" cy="50" r="40" fill="none" stroke="#334155" stroke-width="10" stroke-dasharray="0 251.33" stroke-dashoffset="0"></circle>
+                            </svg>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                                <span id="pareto-center-val" class="font-mono font-bold text-2xl lg:text-3xl text-white">0</span>
+                                <span class="text-[9px] font-mono uppercase tracking-widest text-slate-400">Minut Łącznie</span>
                             </div>
                         </div>
 
-                        <div class="md:col-span-7 space-y-2 text-xs">
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> 1. Logistyka / Stół urobku</span>
-                                <span class="font-mono-numbers font-extrabold text-rose-400">34.5% (51m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span> 2. UR - Podajniki wiązek</span>
-                                <span class="font-mono-numbers font-extrabold text-amber-400">25.7% (38m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-gold-500"></span> 3. Zużycie tarcz / narzędzi</span>
-                                <span class="font-mono-numbers font-extrabold text-gold-400">18.2% (27m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-slate-500"></span> 4. Przezbrojenia SMED</span>
-                                <span class="font-mono-numbers font-bold text-slate-300">12.8% (19m)</span>
-                            </div>
-                            <div class="flex justify-between items-center p-2 rounded-lg bg-graphite-950 border border-graphite-750">
-                                <span class="flex items-center gap-2 text-slate-200"><span class="w-2.5 h-2.5 rounded-sm bg-slate-700"></span> 5. Mikroprzestoje gniazd</span>
-                                <span class="font-mono-numbers font-bold text-slate-400">8.8% (13m)</span>
-                            </div>
-                        </div>
+                        <!-- 5 pozycji Pareto -->
+                        <div class="sm:col-span-7 space-y-2" id="pareto-legend-list"></div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Rejestracja zdarzeń z terminala shop-floor</span>
+                        <button onclick="switchMainTab('capa')" class="font-mono font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors">
+                            Otwórz sztab 5-Why dla top usterki <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                        </button>
                     </div>
                 </div>
 
-                <div class="mt-5 pt-3.5 border-t border-graphite-750 text-xs text-slate-300 flex items-center justify-between">
-                    <span>Rejestracja zdarzeń odbywa się na terminalu shop-floor.</span>
-                    <button onclick="switchTab('capa')" class="text-gold-400 hover:text-gold-300 font-extrabold flex items-center gap-1">
-                        Otwórz sztab 5-Why dla top usterki &rarr;
-                    </button>
-                </div>
-            </div>
-
-            <!-- Globalne OEE -->
-            <div class="bg-graphite-900 border-2 border-graphite-750 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-                <div>
-                    <div class="flex justify-between items-center pb-4 border-b border-graphite-750">
+                <!-- Karta 2: Globalne OEE Ciągu Produkcyjnego (3 koncentryczne pierścienie A x P x Q) -->
+                <div class="glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
+                    <div class="flex items-start justify-between border-b border-slate-800/80 pb-3 mb-4 gap-2">
                         <div class="flex items-center gap-3">
-                            <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="gauge" class="w-5 h-5"></i></span>
+                            <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                                <i data-lucide="gauge" class="w-4 h-4"></i>
+                            </div>
                             <div>
-                                <h3 class="text-sm sm:text-base font-extrabold text-white">Globalne OEE Ciągu Produkcyjnego</h3>
-                                <p class="text-xs text-slate-400">Dostępność (A) &times; Wydajność (P) &times; Jakość (Q)</p>
+                                <h2 class="font-display font-bold text-sm lg:text-base text-white">Globalne OEE Ciągu Produkcyjnego</h2>
+                                <p class="text-xs text-slate-400">Dostępność (A) × Wydajność (P) × Jakość (Q)</p>
                             </div>
                         </div>
-                        <span id="global-oee-badge" class="text-base font-extrabold font-mono-numbers text-gold-400 bg-gold-500/15 px-3.5 py-1.5 rounded-lg border border-gold-400">
-                            68.9%
-                        </span>
+                        <span id="oee-top-badge" class="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 font-mono text-xs font-bold text-amber-400 shrink-0">0.0%</span>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-5 items-center">
-                        <div class="md:col-span-5 flex flex-col items-center justify-center">
-                            <div class="relative w-48 h-48">
-                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <circle cx="50" cy="50" r="43" stroke="#1d2532" stroke-width="4.5" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="34" stroke="#1d2532" stroke-width="4.5" fill="transparent"/>
-                                    <circle cx="50" cy="50" r="25" stroke="#1d2532" stroke-width="4.5" fill="transparent"/>
-
-                                    <circle id="oee-ring-a" cx="50" cy="50" r="43" stroke="#f43f5e" stroke-width="4.5" stroke-dasharray="270.2" stroke-dashoffset="270.2" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
-                                    <circle id="oee-ring-p" cx="50" cy="50" r="34" stroke="#f59e0b" stroke-width="4.5" stroke-dasharray="213.6" stroke-dashoffset="213.6" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
-                                    <circle id="oee-ring-q" cx="50" cy="50" r="25" stroke="#10b981" stroke-width="4.5" stroke-dasharray="157.1" stroke-dashoffset="157.1" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
-                                </svg>
-                                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span id="oee-center-percent" class="text-2xl font-extrabold font-mono-numbers text-gold-400">68.9%</span>
-                                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">OEE</span>
-                                </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center my-auto">
+                        <!-- Koncentryczne pierścienie A / P / Q -->
+                        <div class="sm:col-span-5 flex items-center justify-center relative">
+                            <svg viewBox="0 0 100 100" class="w-36 h-36 lg:w-44 lg:h-44 -rotate-90">
+                                <!-- Zewnętrzny: Dostępność (A) r=42 -->
+                                <circle cx="50" cy="50" r="42" fill="none" stroke="#1E293B" stroke-width="6"></circle>
+                                <circle id="oee-ring-a" class="hud-ring-segment" cx="50" cy="50" r="42" fill="none" stroke="#F43F5E" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 263.89"></circle>
+                                <!-- Środkowy: Wydajność (P) r=33 -->
+                                <circle cx="50" cy="50" r="33" fill="none" stroke="#1E293B" stroke-width="6"></circle>
+                                <circle id="oee-ring-p" class="hud-ring-segment" cx="50" cy="50" r="33" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 207.35"></circle>
+                                <!-- Wewnętrzny: Jakość (Q) r=24 -->
+                                <circle cx="50" cy="50" r="24" fill="none" stroke="#1E293B" stroke-width="6"></circle>
+                                <circle id="oee-ring-q" class="hud-ring-segment" cx="50" cy="50" r="24" fill="none" stroke="#10B981" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 150.80"></circle>
+                            </svg>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                                <span id="oee-center-val" class="font-mono font-bold text-xl lg:text-2xl text-amber-400">0.0%</span>
+                                <span class="text-[9px] font-mono uppercase tracking-widest text-slate-400">OEE</span>
                             </div>
                         </div>
 
-                        <div class="md:col-span-7 space-y-2 text-xs">
-                            <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
+                        <!-- Składowe A, P, Q -->
+                        <div class="sm:col-span-7 space-y-2.5">
+                            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5 lg:p-3 flex items-center justify-between">
                                 <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> Dostępność (Availability)</span>
-                                    <span class="text-[10px] text-slate-400">Przestoje maszyn i awarie</span>
+                                    <div class="flex items-center gap-2 text-xs font-semibold text-white">
+                                        <span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> Dostępność (Availability)
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-0.5">Przestoje maszyn i awarie</p>
                                 </div>
-                                <span id="oee-val-a" class="font-mono-numbers font-extrabold text-rose-400 text-sm">78.4%</span>
+                                <span id="oee-val-a" class="font-mono font-bold text-sm text-rose-400">0.0%</span>
                             </div>
-                            <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
+
+                            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5 lg:p-3 flex items-center justify-between">
                                 <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span> Wydajność (Performance)</span>
-                                    <span class="text-[10px] text-slate-400">Utrata prędkości i taktu</span>
+                                    <div class="flex items-center gap-2 text-xs font-semibold text-white">
+                                        <span class="w-2.5 h-2.5 rounded-sm bg-amber-400"></span> Wydajność (Performance)
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-0.5">Utrata prędkości i taktu</p>
                                 </div>
-                                <span id="oee-val-p" class="font-mono-numbers font-extrabold text-amber-400 text-sm">89.2%</span>
+                                <span id="oee-val-p" class="font-mono font-bold text-sm text-amber-400">0.0%</span>
                             </div>
-                            <div class="p-2.5 bg-graphite-950 rounded-xl border border-graphite-750 flex justify-between items-center">
+
+                            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5 lg:p-3 flex items-center justify-between">
                                 <div>
-                                    <span class="text-slate-200 font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-400"></span> Jakość (Quality)</span>
-                                    <span class="text-[10px] text-slate-400">Zgodność detali (FTY)</span>
+                                    <div class="flex items-center gap-2 text-xs font-semibold text-white">
+                                        <span class="w-2.5 h-2.5 rounded-sm bg-emerald-400"></span> Jakość (Quality)
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-0.5">Zgodność detali (FTY)</p>
                                 </div>
-                                <span id="oee-val-q" class="font-mono-numbers font-extrabold text-emerald-400 text-sm">98.6%</span>
+                                <span id="oee-val-q" class="font-mono font-bold text-sm text-emerald-400">0.0%</span>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between text-xs">
-                    <span class="text-slate-300">Wzorzec World Class OEE: <strong class="text-white font-mono-numbers font-bold">85.0%</strong></span>
-                    <span class="text-amber-400 font-bold font-mono-numbers">Odchyłka: -16.1%</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Plan i Wąskie Gardło -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 bg-graphite-900 border-2 border-gold-500/40 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
-                <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-gold-400 via-gold-500 to-transparent"></div>
-                <div>
-                    <div class="flex flex-wrap justify-between items-center gap-3">
-                        <div class="flex items-center gap-3">
-                            <span class="p-2.5 rounded-xl bg-gold-500/20 text-gold-400 border border-gold-400"><i data-lucide="package-check" class="w-6 h-6"></i></span>
-                            <div>
-                                <h2 class="text-base font-extrabold text-white uppercase tracking-wider">Wykonanie Planu Zakładu (Stal / Spawalnictwo)</h2>
-                                <p class="text-xs text-slate-300">Palety pod pakiety butli technicznych oraz kontenery morskie</p>
-                            </div>
-                        </div>
-                        <span id="plan-delta-badge" class="text-xs font-mono-numbers font-extrabold bg-rose-500/20 border border-rose-500/40 text-rose-300 px-3.5 py-1.5 rounded-lg shadow-sm">
-                            Delta: -59.4% do celu
-                        </span>
+                    <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono">
+                        <span class="text-slate-400">Wzorzec World Class OEE: <strong class="text-white">85.0%</strong></span>
+                        <span id="oee-benchmark-diff" class="text-amber-400 font-semibold">Odchyłka: 0.0%</span>
                     </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 mt-6 items-center">
-                        <div class="md:col-span-8 grid grid-cols-2 gap-4">
-                            <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
-                                <span class="text-xs text-slate-300 font-semibold block">Palety Butlowe</span>
-                                <div id="prod-pallets-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">20 / 100 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
-                                <span id="prod-pallets-percent" class="text-xs text-amber-300 font-mono-numbers font-bold">20.0% celu</span>
-                            </div>
-                            <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
-                                <span class="text-xs text-slate-300 font-semibold block">Kontenery Morskie</span>
-                                <div id="prod-containers-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">5 / 7 <span class="text-xs text-slate-400 font-normal">szt.</span></div>
-                                <span id="prod-containers-percent" class="text-xs text-emerald-300 font-mono-numbers font-bold">71.4% celu</span>
-                            </div>
-                            <div class="bg-graphite-950 p-4 rounded-xl border border-gold-500/40 bg-gold-500/5">
-                                <span class="text-xs text-gold-400 font-bold block">Tonaż Przerobiony</span>
-                                <div id="prod-tonnage-val" class="text-2xl font-extrabold font-mono-numbers text-gold-300 mt-1">18.0 <span class="text-xs text-slate-300 font-normal">Mg</span></div>
-                                <span class="text-xs text-slate-300 font-mono-numbers">Cel dobowy: 45.0 Mg</span>
-                            </div>
-                            <div class="bg-graphite-950 p-4 rounded-xl border border-graphite-750">
-                                <span class="text-xs text-slate-300 font-semibold block">Średni Takt Zakładu</span>
-                                <div id="prod-takt-val" class="text-2xl font-extrabold font-mono-numbers text-white mt-1">34.8 <span class="text-xs text-slate-400 font-normal">min</span></div>
-                                <span id="prod-takt-delta" class="text-xs text-rose-300 font-mono-numbers font-bold">+4.2 min odchyłki</span>
-                            </div>
-                        </div>
-
-                        <div class="md:col-span-4 flex flex-col items-center justify-center p-4 bg-graphite-950 rounded-xl border border-graphite-750">
-                            <div class="relative w-36 h-36">
-                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    <circle cx="50" cy="50" r="40" stroke="#1d2532" stroke-width="8" fill="transparent"/>
-                                    <circle id="donut-plan-circle" cx="50" cy="50" r="40" stroke="#eab308" stroke-width="8" stroke-dasharray="251.3" stroke-dashoffset="251.3" stroke-linecap="butt" fill="transparent" class="chart-hud-ring"/>
-                                </svg>
-                                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span id="donut-plan-text" class="text-xl font-extrabold font-mono-numbers text-white">40.6%</span>
-                                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Realizacja</span>
-                                </div>
-                            </div>
-                            <div class="mt-2.5 flex items-center gap-3 text-[11px] font-mono-numbers">
-                                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-gold-500"></span> Wykonane</span>
-                                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-graphite-850"></span> Pozostało</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between text-xs">
-                    <span class="text-slate-300 font-medium">Sumaryczny wskaźnik realizacji bieżącego zlecenia:</span>
-                    <span id="summary-fulfillment-percent" class="font-extrabold text-gold-400 font-mono-numbers text-base">40.6%</span>
                 </div>
             </div>
 
-            <!-- KAFELEK 2: KRYTYCZNE WĄSKIE GARDŁO -->
-            <div id="bottleneck-card" class="bg-graphite-900 border-2 border-rose-500/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden">
-                <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500"></div>
-                <div>
-                    <div class="flex items-center justify-between">
-                        <span class="px-3 py-1 rounded-lg text-xs font-mono-numbers font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/50 uppercase tracking-wider flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span> Krytyczne Wąskie Gardło
-                        </span>
-                        <span id="bottleneck-share-badge" class="text-xs font-mono-numbers font-bold text-slate-300">68% strat ciągu</span>
-                    </div>
-
-                    <div class="mt-4 pb-3 border-b border-graphite-750">
-                        <div class="flex justify-between items-baseline">
-                            <h3 id="bottleneck-machine-name" class="text-lg font-extrabold text-white">Laser BLM Płytowy CNC</h3>
-                            <span id="bottleneck-station-tag" class="text-xs font-mono-numbers font-bold bg-graphite-950 px-2.5 py-0.5 rounded border border-graphite-750 text-gold-400">G-01</span>
-                        </div>
-                        <div class="flex items-center gap-4 mt-2 text-xs font-mono-numbers">
-                            <span>Przestój: <strong id="bottleneck-duration" class="text-rose-400 font-bold">51 min</strong></span>
-                            <span>Koszt: <strong id="bottleneck-cost" class="text-gold-400 font-bold">3 825 PLN</strong></span>
-                            <span>OEE: <strong id="bottleneck-oee" class="text-white font-bold">62.6%</strong></span>
-                        </div>
-                    </div>
-
-                    <div class="mt-3.5 space-y-2">
-                        <span class="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">Rejestr awarii w toku (Oczekuje na CAPA):</span>
-                        <div id="bottleneck-events-feed" class="space-y-2">
-                            <div class="p-2.5 rounded-xl bg-graphite-950 border border-graphite-750 text-xs">
-                                <div class="flex justify-between font-bold text-rose-300">
-                                    <span>BLM_JAM: Zablokowany stół urobku</span>
-                                    <span class="font-mono-numbers">51 min</span>
-                                </div>
-                                <p class="text-[11px] text-slate-400 mt-1 italic font-medium">"Pisk prowadnicy osi Y i zakleszczony ażur"</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-5 pt-3.5 border-t border-graphite-750 flex items-center justify-between gap-2">
-                    <button onclick="toggleCapaHistoryModal()" class="px-3.5 py-2 bg-graphite-950 hover:bg-graphite-850 text-slate-300 border border-graphite-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-                        <i data-lucide="history" class="w-4 h-4 text-gold-400"></i> Historia CAPA
-                    </button>
-                    <button onclick="analyzeActiveBottleneckInCapa()" class="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-2 border-rose-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm">
-                        <i data-lucide="shield-alert" class="w-4 h-4"></i> Analizuj w 5-Why
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Park Maszynowy -->
-        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl overflow-hidden shadow-xl">
-            <div class="px-6 py-4.5 border-b border-graphite-750 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div class="flex items-center gap-3">
-                    <span class="p-2 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="factory" class="w-5 h-5"></i></span>
-                    <div>
-                        <h3 class="text-base font-bold text-white">Park Maszynowy & Stanowiska Ciągu Produkcyjnego</h3>
-                        <p class="text-xs text-slate-300">Stanowiska połączone z szyną operatorską MES</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span class="text-xs text-slate-300 font-mono-numbers font-semibold">Widok: <strong class="text-gold-400 font-bold" id="machines-view-label">Top 5 Krytycznych</strong></span>
-                    <button onclick="toggleAllMachines()" id="btn-toggle-machines" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-100 border-2 border-gold-500/40 rounded-xl transition flex items-center gap-2 shadow-sm">
-                        <i data-lucide="chevrons-up-down" class="w-4 h-4 text-gold-400"></i> Pokaż Wszystkie (10)
-                    </button>
-                </div>
-            </div>
-
-            <div class="hidden md:grid grid-cols-12 px-6 py-3 bg-graphite-950 text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-graphite-750">
-                <div class="col-span-4">Gniazdo Robocze / Maszyna</div>
-                <div class="col-span-2 text-center">Dostępność (A)</div>
-                <div class="col-span-2 text-center">Wydajność (P)</div>
-                <div class="col-span-1 text-center">Jakość (Q)</div>
-                <div class="col-span-1 text-center">OEE</div>
-                <div class="col-span-2 text-right">Obłożenie / Status</div>
-            </div>
-
-            <div id="machines-container" class="divide-y divide-graphite-750"></div>
-        </div>
-    </main>
-
-    <!-- TAB 2: SZTAB KRYZYSOWY (5-WHY / CAPA) -->
-    <main id="tab-capa" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
-            <div class="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
-                <div>
-                    <div class="flex items-center gap-3">
-                        <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="shield-alert" class="w-6 h-6"></i></span>
-                        <h2 class="text-lg font-bold text-white">Sztab Decyzyjny 5-Why & Moduł CAPA (Human-in-the-Loop)</h2>
-                    </div>
-                    <p class="text-xs text-slate-300 mt-1">Pobierz zdarzenie z kolejki meldunków hali, uruchom asystę wnioskowania Gemini lub nadpisz wnioski manualnie.</p>
-                </div>
-
-                <button onclick="pullLatestEventToCapa()" id="btn-pull-capa" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-gold-400 border-2 border-gold-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-2 shadow-sm">
-                    <i data-lucide="download" class="w-4 h-4"></i> Pobierz Najnowszy Meldunek z Hali
-                </button>
-            </div>
-
-            <div id="capa-incident-header" class="p-5 rounded-2xl bg-graphite-950 border-2 border-graphite-750 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                    <span id="capa-station-code" class="text-xs font-mono-numbers uppercase text-gold-400 font-extrabold block">GNIAZDO: G-01 (Laser BLM Płytowy)</span>
-                    <h3 id="capa-fault-headline" class="text-base font-bold text-white mt-0.5">Zablokowany stół usuwania urobku / brak odbioru ażuru</h3>
-                    <p id="capa-operator-meta" class="text-xs text-slate-300 mt-1">Zgłaszający: <strong class="text-white">Jan Kowalski</strong> | Czas trwania: <strong class="text-rose-400 font-mono-numbers">51 min</strong> | Źródło: MANUAL-MES</p>
-                </div>
-                <div class="text-right flex-shrink-0">
-                    <span class="text-xs uppercase text-slate-400 block font-semibold">Skutek finansowy:</span>
-                    <span id="capa-cost-tag" class="text-lg font-extrabold font-mono-numbers text-rose-400">-3 825 PLN</span>
-                </div>
-            </div>
-
-            <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 space-y-4">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
-                        <i data-lucide="message-square-plus" class="w-4 h-4"></i> Kontekst inżynierski / Notatki z Gemba:
-                    </label>
-                    <div class="flex items-center gap-2">
-                        <button onclick="injectPresetPrompt('wypaczenie')" class="text-xs px-2.5 py-1 rounded-lg bg-graphite-850 text-slate-200 hover:text-gold-400 border border-graphite-700 transition font-medium">Preset: Partia stali S355</button>
-                        <button onclick="injectPresetPrompt('hal')" class="text-xs px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40 transition font-bold">⚠️ Test AI Interlock</button>
-                    </div>
-                </div>
-
-                <textarea id="capa-human-input" rows="2" placeholder="Wpisz dodatkowe obserwacje z inspekcji hali..." class="w-full bg-graphite-900 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 transition font-sans"></textarea>
+            <!-- RZĄD 2 HUD: Realizacja Planu (Palety/Tonaż) + Aktywne Wąskie Gardło -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
                 
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
-                    <p class="text-xs text-slate-300">Agent Gemini wykorzystuje powyższą notatkę jako twardy warunek brzegowy wnioskowania przyczynowego.</p>
-                    <button onclick="triggerCapaAnalysis()" id="btn-run-capa" class="w-full sm:w-auto px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0">
-                        <i data-lucide="bot" class="w-4 h-4"></i> Generuj Kaskadę 5-Why (Gemini AI)
-                    </button>
-                </div>
-            </div>
+                <!-- Realizacja Planu Produkcyjnego -->
+                <div class="lg:col-span-2 glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="package-check" class="w-5 h-5 text-emerald-400"></i>
+                            <div>
+                                <h3 class="font-display font-bold text-sm lg:text-base text-white">Realizacja Planu Spływu (Ciągły Przepływ)</h3>
+                                <p class="text-xs text-slate-400" id="plan-subtitle">Cel okresu oraz wolumen wyprodukowany w wybranym horyzoncie</p>
+                            </div>
+                        </div>
+                        <span id="plan-pct-badge" class="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 font-mono text-xs font-bold text-emerald-400">0.0% Planu</span>
+                    </div>
 
-            <div id="capa-result-area" class="space-y-5">
-                <div class="p-8 text-center bg-graphite-950 rounded-xl border border-graphite-750 text-slate-400 text-xs font-medium">
-                    Pobierz meldunek z kolejki lub wybierz usterkę i kliknij „Generuj Kaskadę 5-Why (Gemini AI)”.
-                </div>
-            </div>
-        </div>
-    </main>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 my-2">
+                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                            <span class="text-[11px] font-mono text-slate-400 uppercase">Cel (Palety)</span>
+                            <div id="kpi-plan-target" class="font-mono font-bold text-lg lg:text-xl text-white mt-0.5">0 szt.</div>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                            <span class="text-[11px] font-mono text-slate-400 uppercase">Wykonanie</span>
+                            <div id="kpi-plan-actual" class="font-mono font-bold text-lg lg:text-xl text-emerald-400 mt-0.5">0 szt.</div>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                            <span class="text-[11px] font-mono text-slate-400 uppercase">Tonaż Stali</span>
+                            <div id="kpi-tonnage" class="font-mono font-bold text-lg lg:text-xl text-amber-400 mt-0.5">0.0 t</div>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                            <span class="text-[11px] font-mono text-slate-400 uppercase">Takt Średni</span>
+                            <div id="kpi-takt" class="font-mono font-bold text-lg lg:text-xl text-slate-200 mt-0.5">0.0 min</div>
+                        </div>
+                    </div>
 
-    <!-- TAB 3: 5S VISION (MULTIMODAL AI & AUDIT TRAIL) -->
-    <main id="tab-audit5s" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
-            
-            <!-- Górny Pasek 5S Vision -->
-            <div class="flex flex-col lg:flex-row lg:items-center justify-between pb-5 border-b border-graphite-750 gap-4">
-                <div>
-                    <div class="flex items-center gap-3">
-                        <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="scan" class="w-6 h-6"></i></span>
-                        <div>
-                            <h2 class="text-lg font-bold text-white">5S Vision: System Cyfrowych Audytów Multimodalnych</h2>
-                            <p class="text-xs text-slate-300">Autonomiczna ocena standardów 1S-5S z kamer RTSP lub przesłanych fotografii inspekcyjnych.</p>
+                    <!-- Pasek postępu -->
+                    <div class="mt-2">
+                        <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                            <div id="plan-progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-1000" style="width: 0%"></div>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-3">
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold text-slate-300 uppercase">STANOWISKO:</span>
-                        <select id="vision-station-select" onchange="onVisionStationChange()" class="bg-graphite-950 border border-graphite-750 text-xs font-bold text-slate-100 rounded-xl px-4 py-2.5 focus:outline-none focus:border-gold-500 min-w-[200px]">
-                            <!-- Generowane dynamicznie -->
-                        </select>
-                    </div>
-
-                    <button onclick="openNewStationModal()" class="px-3.5 py-2.5 bg-graphite-950 hover:bg-graphite-850 text-gold-400 border border-gold-500/40 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm">
-                        <i data-lucide="plus-circle" class="w-4 h-4"></i> Nowe Stanowisko
-                    </button>
-
-                    <label class="cursor-pointer px-4 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-gold-400 border-2 border-gold-500/50 rounded-xl text-xs font-extrabold transition flex items-center gap-2 shadow-sm">
-                        <i data-lucide="camera" class="w-4 h-4"></i>
-                        <span id="vision-upload-label">Wgraj Zdjęcie</span>
-                        <input type="file" id="vision-file-input" accept="image/*" class="hidden" onchange="handleVisionImageUpload(event)">
-                    </label>
-                </div>
-            </div>
-
-            <!-- Panel Wytycznych Audytora -->
-            <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 flex flex-col md:flex-row items-stretch md:items-center gap-4">
-                <div class="flex-1 space-y-1.5">
-                    <label class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
-                        <i data-lucide="eye" class="w-4 h-4"></i> Wskazówki & Ograniczenia dla Agenta Gemini Vision:
-                    </label>
-                    <input type="text" id="vision-human-notes" value="Zwróć uwagę na odłożenie przewodów i stan palnika; ignoruj bufor kwarantanny z żółtą zawieszką." class="w-full bg-graphite-900 border-2 border-graphite-750 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans">
-                </div>
-                <button onclick="executeLiveVisionAudit()" id="btn-run-vision" class="px-6 py-3 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 flex-shrink-0 self-end md:self-auto">
-                    <i data-lucide="scan-line" class="w-4 h-4"></i> Uruchom Inspekcję 5S Vision
-                </button>
-            </div>
-
-            <!-- Zakładki: Aktualna Ocena vs Historia -->
-            <div class="flex items-center gap-3 border-b border-graphite-750 pb-2">
-                <button onclick="switchVisionSubTab('current')" id="vtab-btn-current" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-gold-500 text-graphite-950 transition flex items-center gap-2">
-                    <i data-lucide="activity" class="w-4 h-4"></i> Aktualna Ocena (Bieżący Stan)
-                </button>
-                <button onclick="switchVisionSubTab('history')" id="vtab-btn-history" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-graphite-850 transition flex items-center gap-2">
-                    <i data-lucide="history" class="w-4 h-4"></i> Ślad Audytowy & Historia (<span id="history-count-badge" class="font-mono-numbers">0</span>)
-                </button>
-            </div>
-
-            <!-- SUB-TAB 1: Bieżący stan -->
-            <div id="vision-subtab-current" class="grid grid-cols-1 lg:grid-cols-12 gap-6"></div>
-
-            <!-- SUB-TAB 2: Historia audytów -->
-            <div id="vision-subtab-history" class="hidden space-y-4">
-                <div id="vision-history-list" class="space-y-3"></div>
-            </div>
-
-        </div>
-    </main>
-
-    <!-- TAB 4: SYMULATOR WHAT-IF -->
-    <main id="tab-whatif" class="tab-content hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div class="bg-graphite-900 border border-graphite-750 rounded-2xl p-6 shadow-xl space-y-6">
-            <div class="flex items-center gap-3 pb-5 border-b border-graphite-750">
-                <span class="p-2.5 rounded-xl bg-gold-500/15 text-gold-400 border border-gold-400"><i data-lucide="sliders" class="w-6 h-6"></i></span>
-                <div>
-                    <h2 class="text-lg font-bold text-white">Cyfrowy Bliźniak & Symulator Decyzji What-If</h2>
-                    <p class="text-xs text-slate-300">Testuj wpływ zmian parametrów wąskich gardeł na ogólny wynik finansowy i realizację planu zakładu</p>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
-                    <div class="flex justify-between text-xs font-bold">
-                        <span class="text-slate-200">Skrócenie usuwania urobku (BLM)</span>
-                        <span id="slider-1-val" class="text-gold-400 font-mono-numbers">-30%</span>
-                    </div>
-                    <input type="range" min="0" max="60" value="30" oninput="updateWhatIf()" id="slider-1" class="w-full accent-gold-500 cursor-pointer">
-                    <p class="text-xs text-slate-300 leading-relaxed">Dodanie dedykowanego wózka buforowego na ażury.</p>
-                </div>
-
-                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
-                    <div class="flex justify-between text-xs font-bold">
-                        <span class="text-slate-200">Wymiana oprzyrządowania Giętarki</span>
-                        <span id="slider-2-val" class="text-gold-400 font-mono-numbers">8.6 min (Baza)</span>
-                    </div>
-                    <input type="range" min="4" max="15" value="8.6" step="0.2" oninput="updateWhatIf()" id="slider-2" class="w-full accent-gold-500 cursor-pointer">
-                    <p class="text-xs text-slate-300 leading-relaxed">Standard SMED wózka przygotowawczego matryc.</p>
-                </div>
-
-                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-3.5">
-                    <div class="flex justify-between text-xs font-bold">
-                        <span class="text-slate-200">Eliminacja wad przedgalwanicznych</span>
-                        <span id="slider-3-val" class="text-gold-400 font-mono-numbers">90% zgodności</span>
-                    </div>
-                    <input type="range" min="60" max="100" value="90" oninput="updateWhatIf()" id="slider-3" class="w-full accent-gold-500 cursor-pointer">
-                    <p class="text-xs text-slate-300 leading-relaxed">Szablony sprawdzające otwory odpowietrzające przed spawem.</p>
-                </div>
-            </div>
-
-            <div class="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-graphite-950 to-graphite-900 border-2 border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
-                <div class="flex items-center gap-3.5">
-                    <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-bold">
-                        <i data-lucide="zap" class="w-6 h-6"></i>
-                    </div>
+                <!-- Karta Wąskiego Gardła (TOC / Goldratt) -->
+                <div class="glass-panel rounded-2xl p-4 lg:p-5 border-rose-500/30 bg-gradient-to-br from-rose-950/20 to-slate-900/80 flex flex-col justify-between">
                     <div>
-                        <h4 class="text-sm font-bold text-white">Prognozowany Efekt Wdrożenia Usprawnień:</h4>
-                        <p class="text-xs text-slate-200 mt-0.5" id="whatif-impact-text">
-                            Zysk wydajności ciągu: <strong class="text-emerald-400 font-mono-numbers font-bold">+18 palet / dobę</strong> | Oszczędność: <strong class="text-gold-400 font-mono-numbers font-bold">+4 950 PLN / tydzień</strong>
-                        </p>
-                    </div>
-                </div>
-                <button onclick="alert('Scenariusz pilotażowy został zapisany w bazie zaleceń Lean dla kierownictwa zakładu.')" class="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-graphite-950 font-extrabold text-xs rounded-xl transition shadow-md">
-                    Zatwierdź Scenariusz
-                </button>
-            </div>
-        </div>
-    </main>
-
-    <!-- MODAL MASZYNY -->
-    <div id="machine-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
-        <div class="bg-graphite-900 border-[3px] border-gold-500 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="px-6 py-5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
-                <div class="flex items-center gap-3.5">
-                    <div id="modal-status-indicator" class="w-3.5 h-3.5 rounded-full bg-emerald-400 shadow-sm"></div>
-                    <div>
-                        <h3 id="modal-machine-name" class="text-lg font-bold text-white">Laser BLM Płytowy</h3>
-                        <p id="modal-machine-meta" class="text-xs text-slate-300 font-mono-numbers font-medium">Gniazdo G-01 | Operator: Jan Kowalski | Zmiana I</p>
-                    </div>
-                </div>
-                <button onclick="closeMachineModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <div class="p-6 overflow-y-auto space-y-6">
-                <div>
-                    <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Zunifikowane Wskaźniki Efektywności (OEE Breakdown)</h4>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-                        <div class="bg-graphite-950 p-3.5 rounded-xl border border-graphite-750 text-center">
-                            <span class="text-[11px] text-slate-300 block uppercase font-semibold">Dostępność (A)</span>
-                            <span id="modal-metric-a" class="text-xl font-extrabold font-mono-numbers text-white">71.5%</span>
-                            <span class="text-xs text-rose-400 block font-bold">-51 min strat</span>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="px-2.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-400 font-mono text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping"></span>
+                                Wąskie Gardło Okresu
+                            </span>
+                            <span id="bottleneck-loss-cost" class="font-mono text-xs font-bold text-rose-400">-0 PLN</span>
                         </div>
-                        <div class="bg-graphite-950 p-3.5 rounded-xl border border-graphite-750 text-center">
-                            <span class="text-[11px] text-slate-300 block uppercase font-semibold">Wydajność (P)</span>
-                            <span id="modal-metric-p" class="text-xl font-extrabold font-mono-numbers text-white">88.4%</span>
-                            <span class="text-xs text-amber-300 block font-bold">Takt stabilny</span>
-                        </div>
-                        <div class="bg-graphite-950 p-3.5 rounded-xl border border-graphite-750 text-center">
-                            <span class="text-[11px] text-slate-300 block uppercase font-semibold">Jakość (Q)</span>
-                            <span id="modal-metric-q" class="text-xl font-extrabold font-mono-numbers text-white">99.1%</span>
-                            <span class="text-xs text-emerald-400 block font-bold">Odpad 0.9%</span>
-                        </div>
-                        <div class="bg-graphite-950 p-3.5 rounded-xl border-2 border-gold-500/50 bg-gold-500/10 text-center">
-                            <span class="text-[11px] text-gold-400 block uppercase font-extrabold">OEE Gniazda</span>
-                            <span id="modal-metric-oee" class="text-xl font-extrabold font-mono-numbers text-gold-300">62.6%</span>
-                            <span class="text-xs text-slate-300 block font-medium">Cel: 85.0%</span>
-                        </div>
+                        <h3 id="bottleneck-machine-name" class="font-display font-bold text-base lg:text-lg text-white mt-2">Brak krytycznego zatoru</h3>
+                        <p id="bottleneck-reason" class="text-xs text-slate-300 mt-1 line-clamp-2">Ciągły przepływ w granicach normy taktu.</p>
                     </div>
-                </div>
 
-                <div class="bg-graphite-950 p-5 rounded-2xl border border-graphite-750 space-y-2.5">
-                    <h4 class="text-xs font-bold text-gold-400 uppercase tracking-wider flex items-center gap-2">
-                        <i data-lucide="gauge" class="w-4 h-4"></i> Specyficzna Telemetria Technologiczna Stanowiska
-                    </h4>
-                    <div id="modal-specific-telemetry" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs"></div>
-                </div>
-
-                <div class="bg-graphite-950 p-5 rounded-2xl border-2 border-graphite-750 space-y-3.5">
-                    <div class="flex justify-between items-center">
-                        <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                            <i data-lucide="edit-3" class="w-4 h-4 text-gold-400"></i> Notatka Inżynierska do Zdarzeń Zmiany
-                        </h4>
-                        <span id="modal-note-status" class="text-xs font-mono-numbers font-bold text-emerald-400">Pobrano z bazy MES</span>
-                    </div>
-                    <textarea id="modal-engineer-notes" rows="2" class="w-full bg-graphite-900 border-2 border-graphite-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-gold-500 font-sans"></textarea>
-                    <div class="flex justify-end">
-                        <button onclick="saveMachineNote()" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-slate-200 border border-graphite-600 rounded-xl text-xs font-bold transition">
-                            Zaktualizuj Notatkę Stanowiska
+                    <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                        <span id="bottleneck-downtime-badge" class="font-mono text-xs text-slate-400">Strata: <strong class="text-white">0 min</strong></span>
+                        <button onclick="openBottleneckInCapa()" class="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-mono text-xs font-semibold transition-all">
+                            Analizuj w Sztabie AI →
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex justify-end gap-3">
-                <button onclick="closeMachineModal()" class="px-5 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">Zamknij</button>
-                <button onclick="jumpToCapaFromModal()" class="px-6 py-2.5 bg-gold-500 hover:bg-gold-400 text-graphite-950 font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-md">
-                    <i data-lucide="shield-alert" class="w-4 h-4"></i> Analizuj to gniazdo w 5-Why
-                </button>
+            <!-- RZĄD 3: Siatka Gniazd Produkcyjnych (8 stanowisk ciągu technologicznego) -->
+            <div>
+                <div class="flex flex-wrap items-center justify-between mb-3 gap-2">
+                    <h3 class="font-display font-bold text-sm lg:text-base text-white flex items-center gap-2">
+                        <i data-lucide="cpu" class="w-4 h-4 text-amber-400"></i>
+                        Gniazda Ciągu Technologicznego (Kliknij stanowisko dla parametrów i historii)
+                    </h3>
+                    <span class="text-xs font-mono text-slate-400" id="grid-context-label">Widok zagregowany dla wybranego filtra</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" id="machines-grid"></div>
             </div>
-        </div>
-    </div>
+        </section>
 
-    <!-- MODAL: HISTORIA CAPA -->
-    <div id="capa-history-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
-        <div class="bg-graphite-900 border-[3px] border-emerald-500/60 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="px-6 py-5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
-                <div class="flex items-center gap-3.5">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-400/40 flex items-center justify-center font-bold">
-                        <i data-lucide="shield-check" class="w-6 h-6"></i>
-                    </div>
+        <!-- =================================================================== -->
+        <!-- WIDOK 2: SZTAB 5-WHY & CAPA (HUMAN-IN-THE-LOOP + MANAGER OVERRIDE)  -->
+        <!-- =================================================================== -->
+        <section id="view-capa" class="hidden space-y-5">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <!-- Lewa kolumna: Lista incydentów z wybranego zakresu/zmiany -->
+                <div class="lg:col-span-4 glass-panel rounded-2xl p-4 lg:p-5 flex flex-col justify-between">
                     <div>
-                        <h3 class="text-lg font-bold text-white">Rejestr Wdrożonych Działań Korygujących (CAPA Log)</h3>
-                        <p class="text-xs text-slate-300 font-mono-numbers">Zadania przekazane do UR / Technologii (Ślad audytowy)</p>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                            <h2 class="font-display font-bold text-base text-white flex items-center gap-2">
+                                <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400"></i>
+                                Rejestr Zdarzeń i Przestojów
+                            </h2>
+                            <span id="incident-list-count" class="px-2 py-0.5 rounded bg-slate-800 font-mono text-xs text-slate-300">0</span>
+                        </div>
+                        <div id="incidents-list" class="space-y-2.5 max-h-[540px] overflow-y-auto pr-1"></div>
                     </div>
                 </div>
-                <button onclick="toggleCapaHistoryModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
 
-            <div id="capa-history-list" class="p-6 overflow-y-auto space-y-4 flex-1">
-                <div class="p-8 text-center text-slate-400 text-xs">
-                    Brak zamkniętych zadań CAPA w bieżącej zmianie.
+                <!-- Prawa kolumna: Konsola Analizy Przyczynowej 5-Why AI + Edycja Inżynierska -->
+                <div class="lg:col-span-8 glass-panel rounded-2xl p-4 lg:p-5 space-y-4">
+                    <div class="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 gap-2">
+                        <div>
+                            <span class="text-[10px] font-mono uppercase tracking-wider text-amber-400">Sztab Kryzysowy Lean / IATF 16949</span>
+                            <h2 id="capa-selected-title" class="font-display font-bold text-lg text-white">Wybierz zdarzenie z listy po lewej</h2>
+                        </div>
+                        <span id="capa-engine-badge" class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 font-mono text-[11px] text-slate-300">Gotowy do wnioskowania</span>
+                    </div>
+
+                    <!-- Notatka z Gemba -->
+                    <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5">
+                        <label class="block text-xs font-mono uppercase text-slate-400 mb-1.5">Obserwacja z Gemba / Wskazówka dla AI (opcjonalnie):</label>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="text" id="gemba-note-input" placeholder="np. Czujnik indukcyjny zabrudzony opiłkami, brak osłony..." class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 outline-none">
+                            <button onclick="run5WhyAnalysis()" id="btn-run-5why" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono font-bold text-xs flex items-center justify-center gap-2 transition-all shrink-0">
+                                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                                Generuj Analizę 5-Why
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Drabina 5-Why + Manager Override -->
+                    <div id="five-why-container" class="space-y-2.5">
+                        <div class="p-6 text-center border border-dashed border-slate-800 rounded-xl text-xs font-mono text-slate-500">
+                            Kliknij dowolną usterkę z rejestru obok, aby uruchomić wnioskowanie przyczynowe 5-Why.
+                        </div>
+                    </div>
+
+                    <!-- Historia Wdrożonych Działań CAPA -->
+                    <div class="pt-4 border-t border-slate-800">
+                        <h3 class="font-display font-bold text-sm text-white mb-2.5 flex items-center gap-2">
+                            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+                            Zatwierdzone Zadania CAPA (Audit Trail)
+                        </h3>
+                        <div id="approved-capa-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+                    </div>
                 </div>
             </div>
+        </section>
 
-            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex justify-end">
-                <button onclick="toggleCapaHistoryModal()" class="px-6 py-2.5 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">
-                    Zamknij Rejestr
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL: KONFIGURACJA GEMINI API KEY -->
-    <div id="api-key-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
-        <div class="bg-graphite-900 border-[3px] border-gold-500/80 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div class="px-6 py-4.5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 border border-gold-400/50 flex items-center justify-center font-bold">
-                        <i data-lucide="key" class="w-5 h-5"></i>
+        <!-- =================================================================== -->
+        <!-- WIDOK 3: AUDYT 5S VISION (HYBRYDA: JSON BAZA + SESJA LIVE)          -->
+        <!-- =================================================================== -->
+        <section id="view-vision5s" class="hidden space-y-5">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <!-- Lewa kolumna: Panel inspekcji wizyjnej -->
+                <div class="lg:col-span-5 glass-panel rounded-2xl p-4 lg:p-5 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h2 class="font-display font-bold text-base text-white flex items-center gap-2">
+                            <i data-lucide="camera" class="w-4 h-4 text-amber-400"></i>
+                            Nowa Inspekcja 5S Vision
+                        </h2>
+                        <button onclick="openAddStationModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-amber-400 flex items-center gap-1">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Dodaj stanowisko
+                        </button>
                     </div>
+
                     <div>
-                        <h3 class="text-sm font-extrabold text-white uppercase tracking-wider">Konfiguracja Silnika Gemini AI</h3>
-                        <p class="text-xs text-slate-300 font-mono-numbers">Dyskretny magazyn lokalny (localStorage)</p>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">Wybierz Audytowane Stanowisko:</label>
+                        <select id="vision-station-select" onchange="render5SAuditHistory()" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:border-amber-500 outline-none"></select>
                     </div>
-                </div>
-                <button onclick="closeApiKeyModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
 
-            <div class="p-6 space-y-4 text-xs">
-                <div class="p-3.5 rounded-xl bg-graphite-950 border border-graphite-750 text-slate-300 leading-relaxed space-y-2">
-                    <p><strong class="text-gold-400">Poka-Yoke dla audytu i konkursu:</strong></p>
-                    <p>Gdy to pole jest puste, system działa autonomicznie w oparciu o <strong>Wbudowany Silnik Regułowy (Edge Expert Offline)</strong>. Juror nie musi konfigurować żadnego klucza.</p>
-                    <p>Wklejenie klucza z <a href="https://aistudio.google.com/" target="_blank" class="text-gold-400 underline font-bold">Google AI Studio</a> przełącza aplikację na zapytania w chmurze (Gemini 3.5 Flash Lite)[cite: 3].</p>
-                </div>
-
-                <div class="space-y-1.5">
-                    <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Klucz Gemini API (Google Generative AI):</label>
-                    <input type="password" id="gemini-api-key-input" placeholder="AIzaSy..." class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono-numbers focus:outline-none transition">
-                </div>
-
-                <div id="api-key-status-msg" class="text-xs font-mono-numbers font-semibold text-slate-400">
-                    Status: Sprawdzanie...
-                </div>
-            </div>
-
-            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex items-center justify-between gap-3">
-                <button onclick="clearSavedApiKey()" class="text-xs text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Usuń klucz
-                </button>
-                <div class="flex items-center gap-2">
-                    <button onclick="closeApiKeyModal()" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">Anuluj</button>
-                    <button onclick="saveApiKeyFromModal()" class="px-5 py-2 bg-gold-500 hover:bg-gold-400 text-graphite-950 text-xs font-extrabold rounded-xl transition shadow-md">Zapisz i Aktywuj</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL: DODAWANIE NOWEGO STANOWISKA 5S -->
-    <div id="new-station-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
-        <div class="bg-graphite-900 border-[3px] border-gold-500/80 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div class="px-6 py-4.5 bg-graphite-950 border-b-2 border-graphite-750 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 border border-gold-400/50 flex items-center justify-center font-bold">
-                        <i data-lucide="plus" class="w-5 h-5"></i>
-                    </div>
                     <div>
-                        <h3 class="text-sm font-extrabold text-white uppercase tracking-wider">Nowe Stanowisko 5S</h3>
-                        <p class="text-xs text-slate-300">Dodaj gniazdo produkcyjne do rejestru</p>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">Zdjęcie Stanowiska z Hali (JPG/PNG):</label>
+                        <label class="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-700 hover:border-amber-500/60 rounded-xl cursor-pointer bg-slate-950/60 transition-all overflow-hidden relative" id="vision-dropzone">
+                            <div id="vision-upload-placeholder" class="flex flex-col items-center justify-center text-center p-4">
+                                <i data-lucide="upload-cloud" class="w-7 h-7 text-amber-400 mb-1.5"></i>
+                                <p class="text-xs text-slate-300 font-medium">Kliknij, aby wgrać zdjęcie stanowiska</p>
+                                <p class="text-[10px] text-slate-500 font-mono mt-0.5">Automatyczna kompresja i analiza jasności</p>
+                            </div>
+                            <img id="vision-preview-img" class="hidden w-full h-full object-cover" alt="Podgląd stanowiska">
+                            <input type="file" id="vision-file-input" accept="image/*" onchange="handleVisionFileSelect(event)" class="hidden">
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">Wytyczne Audytora / Uwagi z Obchodu LPA:</label>
+                        <textarea id="vision-notes-input" rows="2" placeholder="np. Zwróć uwagę na odłożenie klucza wiertarskiego, wióry na stole i oznaczenie stref..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 outline-none"></textarea>
+                    </div>
+
+                    <button onclick="executeLiveVisionAudit()" id="btn-run-vision" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all">
+                        <i data-lucide="scan-eye" class="w-4 h-4"></i>
+                        Uruchom Inspekcję 5S Vision
+                    </button>
+                </div>
+
+                <!-- Prawa kolumna: Wynik bieżącego audytu + Historia LPA z bazy JSON -->
+                <div class="lg:col-span-7 glass-panel rounded-2xl p-4 lg:p-5 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div>
+                            <h2 class="font-display font-bold text-base text-white">Karta Oceny 5S i Ślad Audytowy (LPA)</h2>
+                            <p class="text-xs text-slate-400">Baza historyczna z repozytorium + najnowsze inspekcje sesji</p>
+                        </div>
+                        <span id="vision-latest-score-badge" class="px-3 py-1 rounded-lg bg-slate-900 border border-slate-700 font-mono text-xs font-bold text-amber-400">Ocena: —</span>
+                    </div>
+
+                    <!-- Wynik ostatniego / wybranego audytu -->
+                    <div id="vision-result-panel" class="space-y-3"></div>
+
+                    <!-- Oś czasu historycznych audytów dla tego stanowiska -->
+                    <div class="pt-3 border-t border-slate-800">
+                        <h3 class="text-xs font-mono uppercase text-slate-400 mb-2.5">Historia Audytów tego Stanowiska:</h3>
+                        <div id="vision-history-list" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
                     </div>
                 </div>
-                <button onclick="closeNewStationModal()" class="text-slate-300 hover:text-white p-2 rounded-xl bg-graphite-850 border border-graphite-700 transition">
-                    <i data-lucide="x" class="w-4 h-4"></i>
-                </button>
             </div>
+        </section>
 
-            <div class="p-6 space-y-4 text-xs">
-                <div class="space-y-1.5">
-                    <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Nazwa Stanowiska / Maszyny:</label>
-                    <input type="text" id="new-station-name" placeholder="np. Spawalnia Bram Ciężkich" class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition">
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="space-y-1.5">
-                        <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Kod Stanowiska:</label>
-                        <input type="text" id="new-station-code" placeholder="np. S-03" class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white uppercase font-mono-numbers focus:outline-none transition">
+        <!-- =================================================================== -->
+        <!-- WIDOK 4: STANDARDY OPERACYJNE (SOP) & MATRYCA KOMPETENCJI            -->
+        <!-- =================================================================== -->
+        <section id="view-standards" class="hidden space-y-5">
+            <div class="glass-panel rounded-2xl p-5">
+                <h2 class="font-display font-bold text-lg text-white mb-2">Karty Standaryzacji Pracy (SOP) & Reguły Eskalacji Andon</h2>
+                <p class="text-xs text-slate-400 mb-4">Zintegrowane instrukcje stanowiskowe oraz progi reakcji Utrzymania Ruchu dla ciągu spawalniczo-konstrukcyjnego.</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="glass-card rounded-xl p-4">
+                        <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono text-[10px] font-bold">SOP-L01 • CIĘCIE</span>
+                        <h3 class="font-bold text-sm text-white mt-2">Kontrola Dyszy i Optyki Lasera BLM</h3>
+                        <p class="text-xs text-slate-400 mt-1">Obowiązkowa weryfikacja centrowania wiązki oraz czystości szkła ochronnego przed startem Zmiany I i II (czas SMED: 4 min).</p>
                     </div>
-                    <div class="space-y-1.5">
-                        <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Obszar / Hala:</label>
-                        <input type="text" id="new-station-area" placeholder="np. Hala PK1" class="w-full bg-graphite-950 border-2 border-graphite-700 focus:border-gold-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition">
+                    <div class="glass-card rounded-xl p-4">
+                        <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px] font-bold">SOP-S02 • SPAWANIE</span>
+                        <h3 class="font-bold text-sm text-white mt-2">Reżim Parametrów WPS i Czystości Stołu</h3>
+                        <p class="text-xs text-slate-400 mt-1">Kontrola przepływu gazu osłonowego (14–16 l/min), weryfikacja atestu 3.1 drutu oraz czyszczenie rowków teowych na koniec zmiany.</p>
+                    </div>
+                    <div class="glass-card rounded-xl p-4">
+                        <span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 font-mono text-[10px] font-bold">ESKALACJA ANDON</span>
+                        <h3 class="font-bold text-sm text-white mt-2">Matryca Reakcji na Przestój Wąskiego Gardła</h3>
+                        <p class="text-xs text-slate-400 mt-1">&gt; 5 min: Brygadzista | &gt; 15 min: Utrzymanie Ruchu + Sztab 5-Why | &gt; 30 min: Kierownik Produkcji (relokacja zasobów).</p>
                     </div>
                 </div>
-                <div class="space-y-1.5">
-                    <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 block">Opcjonalne pierwsze zdjęcie (plik):</label>
-                    <input type="file" id="new-station-photo" accept="image/*" class="w-full text-xs text-slate-400 bg-graphite-950 border border-graphite-700 rounded-xl p-2 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:bg-gold-500 file:text-graphite-950 file:font-bold">
-                </div>
             </div>
+        </section>
 
-            <div class="px-6 py-4 bg-graphite-950 border-t-2 border-graphite-750 flex justify-end gap-2">
-                <button onclick="closeNewStationModal()" class="px-4 py-2 bg-graphite-850 hover:bg-graphite-800 text-xs font-bold text-slate-200 rounded-xl transition">Anuluj</button>
-                <button onclick="saveNewStation()" class="px-5 py-2 bg-gold-500 hover:bg-gold-400 text-graphite-950 text-xs font-extrabold rounded-xl transition shadow-md">Dodaj Stanowisko</button>
-            </div>
-        </div>
-    </div>
+    </main>
 
-    <!-- Status Footer -->
-    <footer class="bg-graphite-900 border-t border-graphite-750 py-4 mt-auto">
-        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300">
-            <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full bg-gold-400"></span>
-                <span class="font-bold text-white">Proton Lean OS</span> &copy; 2026 | Enterprise Heavy Fab Edition
-            </div>
-            
-            <div class="flex items-center gap-4 text-xs font-mono-numbers font-medium">
-                <span class="bus-status-indicator">Magistrala MES: Inicjalizacja...</span>
-                <span>Pamięć trwała: localStorage active</span>
-                
-                <button onclick="resetFactorySimulationState()" title="Twardy reset symulacji fabryki" class="p-1.5 rounded-lg bg-graphite-950 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-graphite-750 hover:border-rose-500/50 transition">
-                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-                </button>
-                
-                <span class="text-gold-400 font-bold">PANS Krosno</span>
+    <!-- STOPKA SYSTEMOWA -->
+    <footer class="border-t border-slate-800/80 bg-slate-950/80 py-3 px-4 sm:px-6 mt-auto">
+        <div class="max-w-[1640px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] font-mono text-slate-500">
+            <div>PROTON LEAN OS • Architektura Dual-Core (Gemini AI + Edge Deterministic Engine)</div>
+            <div class="flex items-center gap-4">
+                <span id="footer-timeline-range">Horyzont bazy: 30 dni wstecz</span>
+                <button onclick="hardResetSystemData()" class="text-rose-400/80 hover:text-rose-400 underline transition-colors">Resetuj bufor sesji</button>
             </div>
         </div>
     </footer>
 
-    <!-- Skrypty JS -->
+    <!-- SZUFLADA KOLEJKI ZADAŃ PUSH-PULL -->
+    <div id="pushpull-drawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-slate-950 border-l border-slate-800 z-50 transform translate-x-full transition-transform duration-300 flex flex-col shadow-2xl">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="list-todo" class="w-5 h-5 text-amber-400"></i>
+                <h3 class="font-display font-bold text-base text-white">Kolejka Zadań Push-Pull</h3>
+            </div>
+            <button onclick="togglePushPullDrawer()" class="p-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-white">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+        <div id="pushpull-list" class="p-4 space-y-3 overflow-y-auto flex-1"></div>
+    </div>
+
+    <!-- MODAL KONFIGURACJI KLUCZA GEMINI API -->
+    <div id="ai-config-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl max-w-md w-full p-5 space-y-4 border-slate-700">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-display font-bold text-base text-white flex items-center gap-2">
+                    <i data-lucide="key-round" class="w-4 h-4 text-amber-400"></i>
+                    Konfiguracja Silnika Gemini AI
+                </h3>
+                <button onclick="closeAiConfigModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <p class="text-xs text-slate-400">Wklej klucz Google AI Studio API Key, aby aktywować analizę multimodalną 5S Vision oraz wnioskowanie 5-Why w chmurze. Brak klucza uruchamia deterministyczny silnik Edge Offline.</p>
+            <input type="password" id="gemini-key-input" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:border-amber-500 outline-none">
+            <div class="flex justify-end gap-2">
+                <button onclick="clearGeminiApiKey()" class="px-3 py-2 rounded-xl bg-slate-800 text-xs font-mono text-rose-400 hover:bg-slate-700">Usuń klucz</button>
+                <button onclick="saveGeminiApiKey()" class="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-mono font-bold text-xs hover:bg-amber-400">Zapisz i Aktywuj</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DODAWANIA NOWEGO STANOWISKA 5S -->
+    <div id="add-station-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl max-w-md w-full p-5 space-y-4 border-slate-700">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-display font-bold text-base text-white">Dodaj Nowe Stanowisko do Rejestru 5S</h3>
+                <button onclick="closeAddStationModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-mono text-slate-400 mb-1">Nazwa Maszyny / Gniazda:</label>
+                    <input type="text" id="new-station-name" placeholder="np. Wiertarka Stołowa WS-15" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">Kod Stanowiska:</label>
+                        <input type="text" id="new-station-code" placeholder="np. W-04" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">Wydział / Obszar:</label>
+                        <input type="text" id="new-station-area" placeholder="np. Warsztat PK1" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500">
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeAddStationModal()" class="px-3 py-2 rounded-xl bg-slate-800 text-xs font-mono text-slate-300">Anuluj</button>
+                <button onclick="confirmAddStation()" class="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-mono font-bold text-xs">Zapisz Stanowisko</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SZCZEGÓŁÓW STANOWISKA Z KOKPITU -->
+    <div id="machine-detail-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl max-w-lg w-full p-5 space-y-4 border-slate-700" id="machine-detail-content"></div>
+    </div>
+
+    <!-- SKRYPTY RDZENIA SYSTEMU -->
     <script src="js/bus.js"></script>
     <script src="js/gemini_engine.js"></script>
     <script src="js/dashboard.js"></script>

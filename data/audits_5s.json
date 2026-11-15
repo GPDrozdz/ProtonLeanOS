@@ -1,0 +1,265 @@
+{
+  "stations": [
+    {
+      "id": "ws_weld",
+      "name": "Spawanie Manualne MIG/MAG",
+      "code": "S-02",
+      "area": "Spawalnia Główna PK1"
+    },
+    {
+      "id": "ws_laser",
+      "name": "Laser BLM Płytowy CNC",
+      "code": "L-01",
+      "area": "Wydział Cięcia PK1"
+    },
+    {
+      "id": "ws_saw",
+      "name": "Piła Tarczowa do Metalu",
+      "code": "P-01",
+      "area": "Przygotowanie PK2"
+    },
+    {
+      "id": "ws_bender",
+      "name": "Giętarka do Rur CNC",
+      "code": "G-01",
+      "area": "Giętarnia PK2"
+    },
+    {
+      "id": "ws_final",
+      "name": "Montaż Końcowy Kontenerów",
+      "code": "M-01",
+      "area": "Montaż Końcowy"
+    },
+    {
+      "id": "ws_robot",
+      "name": "Zrobotyzowana Cela Spawalnicza",
+      "code": "R-01",
+      "area": "Spawalnia PK1"
+    },
+    {
+      "id": "ws_shot",
+      "name": "Śrutownia Komorowa Detali",
+      "code": "K-02",
+      "area": "Przygotowanie Powierzchni"
+    },
+    {
+      "id": "ws_paint",
+      "name": "Stanowisko Malowania Proszkowego",
+      "code": "P-03",
+      "area": "Lakiernia PK2"
+    }
+  ],
+  "audits": [
+    {
+      "stationId": "ws_weld",
+      "timestamp": "12.11.2026 07:45",
+      "score": "2.95",
+      "s1": "3.20",
+      "s2": "2.40",
+      "s3": "3.10",
+      "s4": "3.05",
+      "s5": "3.00",
+      "observations": [
+        {
+          "text": "Nieodłożony uchwyt spawalniczy na wieszak magnetyczny, leży na krawędzi stołu",
+          "pen": "-0.80 pkt (2S)"
+        },
+        {
+          "text": "Odpryski spawalnicze zalegające w rowkach teowych płyty traserskiej",
+          "pen": "-0.55 pkt (3S)"
+        },
+        {
+          "text": "Atesty hutnicze 3.1 drutu oraz karty WPS czytelnie wywieszone na tablicy",
+          "pen": "+ Wzorcowo (4S)"
+        }
+      ],
+      "capa": "Montaż magnetycznego uchwytu palnika spawalniczego w zasięgu dłoni oraz wdrożenie skrobaka na łańcuszku.",
+      "source": "Gemini Vision (Audyt LPA)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_weld",
+      "timestamp": "05.11.2026 14:15",
+      "score": "2.52",
+      "s1": "2.80",
+      "s2": "2.10",
+      "s3": "2.50",
+      "s4": "2.60",
+      "s5": "2.60",
+      "observations": [
+        {
+          "text": "Splątane przewody masy i wąż gazu osłonowego na ciągu komunikacyjnym",
+          "pen": "-0.90 pkt (BHP/2S)"
+        },
+        {
+          "text": "Brak wyznaczonej strefy odkładczej dla detali po spawaniu",
+          "pen": "-0.70 pkt (4S)"
+        }
+      ],
+      "capa": "Instalacja obrotowego wysięgnika przewodów zasilających nad stanowiskiem.",
+      "source": "Audyt Wstępny (Benchmark)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_laser",
+      "timestamp": "13.11.2026 10:20",
+      "score": "2.88",
+      "s1": "2.40",
+      "s2": "2.90",
+      "s3": "3.20",
+      "s4": "3.00",
+      "s5": "2.90",
+      "observations": [
+        {
+          "text": "Ażury po cięciu wystają poza żółtą linię buforową stołu wymiany palet",
+          "pen": "-0.85 pkt (1S/BHP)"
+        },
+        {
+          "text": "Prowadnice osi X/Y oraz dysze tnące po pełnej inspekcji TPM",
+          "pen": "+ Wzorcowo (3S)"
+        }
+      ],
+      "capa": "Zwiększenie gabarytu kontenera złomowego przy stole wyładowczym i odmalowanie linii strefy urobku.",
+      "source": "Gemini Vision (Kamera L-01)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_saw",
+      "timestamp": "11.11.2026 12:00",
+      "score": "3.65",
+      "s1": "3.80",
+      "s2": "3.40",
+      "s3": "4.10",
+      "s4": "3.50",
+      "s5": "3.45",
+      "observations": [
+        {
+          "text": "Czysta taca wiórowa, brak rozlanego chłodziwa wokół podajnika rolkowego",
+          "pen": "+ Wzorcowo (3S)"
+        },
+        {
+          "text": "Stępiona tarcza HSS odłożona na regał bez czerwonej zawieszki kwarantanny",
+          "pen": "-0.60 pkt (1S/4S)"
+        }
+      ],
+      "capa": "Wdrożenie tablicy cieni na tarcze z wyraźnym podziałem na strefę zieloną (nowe) i czerwoną (ostrzenie).",
+      "source": "Gemini Vision (Inspekcja)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_bender",
+      "timestamp": "14.11.2026 15:30",
+      "score": "4.42",
+      "s1": "4.50",
+      "s2": "4.40",
+      "s3": "4.60",
+      "s4": "4.30",
+      "s5": "4.30",
+      "observations": [
+        {
+          "text": "Tablica cieni matryc i trzpieni gnących kompletna w 100% zgodnie z SMED",
+          "pen": "+ Wzorcowo (2S)"
+        },
+        {
+          "text": "Brak wycieków hydraulicznych, agregat i chłodnica oleju odtłuszczone",
+          "pen": "+ Wzorcowo (3S)"
+        }
+      ],
+      "capa": "Utrzymanie standardu – stanowisko referencyjne (benchmark) dla wydziału PK2.",
+      "source": "Gemini Vision (Benchmark)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_final",
+      "timestamp": "10.11.2026 09:40",
+      "score": "3.48",
+      "s1": "3.70",
+      "s2": "3.10",
+      "s3": "3.80",
+      "s4": "3.40",
+      "s5": "3.40",
+      "observations": [
+        {
+          "text": "Klucze dynamometryczne posiadają aktualną plombę i naklejkę kalibracji",
+          "pen": "+ Wzorcowo (4S)"
+        },
+        {
+          "text": "Kartony z zamkami kontenerowymi stoją bezpośrednio na posadzce zamiast regale FIFO",
+          "pen": "-0.65 pkt (2S)"
+        }
+      ],
+      "capa": "Wdrożenie grawitacyjnego regału rolkowego FIFO na okucia i elementy złączne.",
+      "source": "Gemini Vision (Audyt Zmianowy)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_robot",
+      "timestamp": "13.11.2026 16:10",
+      "score": "4.18",
+      "s1": "4.30",
+      "s2": "4.10",
+      "s3": "4.40",
+      "s4": "4.10",
+      "s5": "4.00",
+      "observations": [
+        {
+          "text": "Kurtyny optyczne i wygrodzenia BHP strefy robota bez jakichkolwiek przeszkód",
+          "pen": "+ Wzorcowo (BHP/3S)"
+        },
+        {
+          "text": "Zapasowe dysze gazowe i końcówki prądowe nieoznaczone w szufladzie",
+          "pen": "-0.45 pkt (4S)"
+        }
+      ],
+      "capa": "Opisanie przegród szuflady narzędziowej wkładkami piankowymi Poka-Yoke.",
+      "source": "Gemini Vision (Cela Robot)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_shot",
+      "timestamp": "09.11.2026 11:25",
+      "score": "2.35",
+      "s1": "2.60",
+      "s2": "2.20",
+      "s3": "1.90",
+      "s4": "2.50",
+      "s5": "2.55",
+      "observations": [
+        {
+          "text": "Wysypany śrut stalowy na ciągu pieszym przed komorą – wysokie ryzyko poślizgnięcia",
+          "pen": "-1.10 pkt (BHP/3S)"
+        },
+        {
+          "text": "Brak wyznaczonego miejsca na odkurzacz przemysłowy do odzysku ścierniwa",
+          "pen": "-0.60 pkt (2S)"
+        }
+      ],
+      "capa": "Montaż podwójnej fartuchowej listwy uszczelniającej próg wrót komory oraz malowanie strefy odkładczej.",
+      "source": "Audyt Wstępny (LPA)",
+      "imageBase64": null
+    },
+    {
+      "stationId": "ws_paint",
+      "timestamp": "14.11.2026 08:50",
+      "score": "3.55",
+      "s1": "3.80",
+      "s2": "3.40",
+      "s3": "3.70",
+      "s4": "3.40",
+      "s5": "3.45",
+      "observations": [
+        {
+          "text": "Zawieszki malarskie po pirolizie posortowane według typoszeregu detali",
+          "pen": "+ Wzorcowo (1S)"
+        },
+        {
+          "text": "Brak piktogramu pomiaru rezystancji uziemienia przy stojaku trawers",
+          "pen": "-0.55 pkt (4S)"
+        }
+      ],
+      "capa": "Oznakowanie punktu kontroli ciągłości uziemienia trawersy i wdrożenie listy kontrolnej przed malowaniem.",
+      "source": "Gemini Vision (Audyt Zmiany I)",
+      "imageBase64": null
+    }
+  ]
+}
