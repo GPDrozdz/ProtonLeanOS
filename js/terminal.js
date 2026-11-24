@@ -1,9 +1,10 @@
 /**
- * Proton Lean OS - Terminal Operatorski MES (Shop-Floor Logic v2.6)
- * Kaskadowy akordeon Open-Close, dedykowane słowniki per gniazdo i Poka-Yoke czasu.
+ * Proton Lean OS - Terminal Operatorski MES (Shop-Floor Logic v4.1)
+ * - Pełna synchronizacja z szyną MESBus.publishEvent() (MQTT + localStorage + Broadcast)
+ * - Mapowanie gniazd G-01..G-10 na ID maszyn kokpitu (L-01, L-02, G-01, P-01, R-01, S-02, K-02, M-01)
+ * - Automatyczna klasyfikacja kategorii strat Pareto (LOGISTICS, MAINTENANCE, TOOLING, SMED, MICRO)
  */
 
-// Baza operatorów hali
 const OPERATORS_LIST = [
     { id: 1, name: "Jan Kowalski" },
     { id: 2, name: "Mateusz Nowak" },
@@ -19,101 +20,100 @@ const OPERATORS_LIST = [
     { id: 12, name: "Michael Wagner" }
 ];
 
-// Park maszynowy (10 gniazd)
+// Park maszynowy zmapowany 1:1 do identyfikatorów kokpitu (MACHINES_CATALOG w dashboard.js)
 const STATIONS_LIST = [
-    { id: 0, code: "G-01", name: "Laser BLM Płytowy" },
-    { id: 1, code: "G-02", name: "Laser BLM Tube" },
-    { id: 2, code: "G-03", name: "Wycinarka Plazmowa" },
-    { id: 3, code: "G-04", name: "Giętarka CNC" },
-    { id: 4, code: "G-05", name: "Piła Tarczowa" },
-    { id: 5, code: "G-06", name: "Prasa Krawędziowa" },
-    { id: 6, code: "G-07", name: "Robot Spawalniczy A" },
-    { id: 7, code: "G-08", name: "Spawanie MIG Manual" },
-    { id: 8, code: "G-09", name: "Przedgalwanika" },
-    { id: 9, code: "G-10", name: "Montaż Końcowy" }
+    { id: 0, code: "G-01", dashboardId: "L-01", name: "Laser BLM Płytowy CNC" },
+    { id: 1, code: "G-02", dashboardId: "L-02", name: "Laser Rurowy Adige" },
+    { id: 2, code: "G-03", dashboardId: "L-01", name: "Wycinarka Plazmowa" },
+    { id: 3, code: "G-04", dashboardId: "G-01", name: "Giętarka do Rur CNC" },
+    { id: 4, code: "G-05", dashboardId: "P-01", name: "Piła Tarczowa Automatyczna" },
+    { id: 5, code: "G-06", dashboardId: "G-01", name: "Prasa Krawędziowa" },
+    { id: 6, code: "G-07", dashboardId: "R-01", name: "Cela Zrobotyzowana Fanuc" },
+    { id: 7, code: "G-08", dashboardId: "S-02", name: "Spawanie Manualne MIG/MAG" },
+    { id: 8, code: "G-09", dashboardId: "K-02", name: "Śrutownia Komorowa" },
+    { id: 9, code: "G-10", dashboardId: "M-01", name: "Montaż Końcowy Kontenerów" }
 ];
 
-// Dedykowany słownik usterek dopasowany technologicznie do każdego gniazda
+// Dedykowany słownik usterek wraz z kategorią Pareto dla kokpitu
 const STATION_FAULTS = {
-    0: [ // G-01: Laser BLM Płytowy
-        { code: "BLM_JAM", name: "Zablokowany stół urobku / ażur", dept: "Logistyka Wewnętrzna", costMin: 75 },
-        { code: "LENS_DIRT", name: "Zanieczyszczenie szkła ochronnego głowicy", dept: "UR - Optyka CNC", costMin: 75 },
-        { code: "GAS_DROP", name: "Spadek ciśnienia azotu tnącego (< 18 bar)", dept: "Media Gazowe", costMin: 75 },
-        { code: "SHEET_COLL", name: "Wykryto kolizję głowicy z wypaczonym arkuszem", dept: "UR - Mechanika", costMin: 75 }
+    0: [
+        { code: "BLM_JAM", name: "Zablokowany stół urobku / ażur", dept: "Logistyka Wewnętrzna", category: "LOGISTICS", costMin: 8 },
+        { code: "LENS_DIRT", name: "Zanieczyszczenie szkła ochronnego głowicy", dept: "UR - Optyka CNC", category: "TOOLING", costMin: 8 },
+        { code: "GAS_DROP", name: "Spadek ciśnienia azotu tnącego (< 18 bar)", dept: "Media Gazowe", category: "MAINTENANCE", costMin: 8 },
+        { code: "SHEET_COLL", name: "Wykryto kolizję głowicy z wypaczonym arkuszem", dept: "UR - Mechanika", category: "MAINTENANCE", costMin: 8 }
     ],
-    1: [ // G-02: Laser BLM Tube
-        { code: "TUBE_FEED", name: "Zacięcie podajnika automatycznego wiązki", dept: "UR - Mechanika", costMin: 75 },
-        { code: "CHUCK_OVER", name: "Przeciążenie momentu chwytaka obrotowego", dept: "UR - Mechatronika", costMin: 75 },
-        { code: "OPTIC_ALIGN", name: "Błąd centrowania wiązki na profilu", dept: "UR - Optyka CNC", costMin: 75 },
-        { code: "UNLOAD_JAM", name: "Zablokowany wyrzutnik uciętych rur", dept: "Logistyka Wewnętrzna", costMin: 75 }
+    1: [
+        { code: "TUBE_FEED", name: "Zacięcie podajnika automatycznego wiązki", dept: "UR - Mechanika", category: "MAINTENANCE", costMin: 8 },
+        { code: "CHUCK_OVER", name: "Przeciążenie momentu chwytaka obrotowego", dept: "UR - Mechatronika", category: "MAINTENANCE", costMin: 8 },
+        { code: "OPTIC_ALIGN", name: "Błąd centrowania wiązki na profilu", dept: "UR - Optyka CNC", category: "SMED", costMin: 8 },
+        { code: "UNLOAD_JAM", name: "Zablokowany wyrzutnik uciętych rur", dept: "Logistyka Wewnętrzna", category: "LOGISTICS", costMin: 8 }
     ],
-    2: [ // G-03: Wycinarka Plazmowa
-        { code: "PLASMA_ARC", name: "Zgaśnięcie łuku głównego plazmy", dept: "UR - Spawalnictwo", costMin: 60 },
-        { code: "THC_ERR", name: "Błąd regulatora wysokości palnika (THC)", dept: "UR - Elektronika", costMin: 60 },
-        { code: "SLAG_BUILD", name: "Nadmierne zaszlakowanie rusztu wodnego", dept: "Czyszczenie / TPM", costMin: 45 },
-        { code: "NOZZLE_BURN", name: "Przepalenie dyszy wirowej palnika", dept: "UR - Oprzyrządowanie", costMin: 50 }
+    2: [
+        { code: "PLASMA_ARC", name: "Zgaśnięcie łuku głównego plazmy", dept: "UR - Spawalnictwo", category: "MAINTENANCE", costMin: 7 },
+        { code: "THC_ERR", name: "Błąd regulatora wysokości palnika (THC)", dept: "UR - Elektronika", category: "MICRO", costMin: 7 },
+        { code: "SLAG_BUILD", name: "Nadmierne zaszlakowanie rusztu wodnego", dept: "Czyszczenie / TPM", category: "MAINTENANCE", costMin: 6 },
+        { code: "NOZZLE_BURN", name: "Przepalenie dyszy wirowej palnika", dept: "UR - Oprzyrządowanie", category: "TOOLING", costMin: 7 }
     ],
-    3: [ // G-04: Giętarka CNC
-        { code: "BEND_TOOL", name: "Wyszczerbienie matrycy gnącej promienia", dept: "UR - Oprzyrządowanie", costMin: 55 },
-        { code: "HYDR_TEMP", name: "Przegrzanie oleju hydraulicznego agregatu", dept: "UR - Hydraulika", costMin: 55 },
-        { code: "BACK_GAUGE", name: "Błąd pozycjonera zderzaków tylnych osi X", dept: "UR - Mechatronika", costMin: 55 },
-        { code: "ANGLE_DEV", name: "Odchyłka kąta gięcia profilu powyżej ±1.5°", dept: "Jakość / SOP", costMin: 45 }
+    3: [
+        { code: "BEND_TOOL", name: "Wyszczerbienie matrycy gnącej promienia", dept: "UR - Oprzyrządowanie", category: "TOOLING", costMin: 6 },
+        { code: "HYDR_TEMP", name: "Przegrzanie oleju hydraulicznego agregatu", dept: "UR - Hydraulika", category: "MAINTENANCE", costMin: 6 },
+        { code: "BACK_GAUGE", name: "Błąd pozycjonera zderzaków tylnych osi X", dept: "UR - Mechatronika", category: "MICRO", costMin: 6 },
+        { code: "ANGLE_DEV", name: "Przezbrojenie stempla pod nowy profil", dept: "Technologia / SMED", category: "SMED", costMin: 6 }
     ],
-    4: [ // G-05: Piła Tarczowa
-        { code: "BLADE_TEETH", name: "Wyłamanie zębów węglikowych tarczy", dept: "UR - Narzędziownia", costMin: 50 },
-        { code: "COOLANT_LOW", name: "Brak przepływu chłodziwa / emulsji", dept: "TPM / Media", costMin: 40 },
-        { code: "CLAMP_SLIP", name: "Uślizg profilu w zacisku imadła pneumatycznego", dept: "UR - Pneumatyka", costMin: 45 },
-        { code: "CHIP_JAM", name: "Zablokowany ślimakowy wygarniacz wiórów", dept: "UR - Mechanika", costMin: 45 }
+    4: [
+        { code: "BLADE_TEETH", name: "Wyłamanie zębów węglikowych tarczy HSS", dept: "UR - Narzędziownia", category: "TOOLING", costMin: 5 },
+        { code: "COOLANT_LOW", name: "Brak przepływu chłodziwa / emulsji", dept: "TPM / Media", category: "MAINTENANCE", costMin: 5 },
+        { code: "CLAMP_SLIP", name: "Uślizg profilu w zacisku imadła pneumatycznego", dept: "UR - Pneumatyka", category: "MAINTENANCE", costMin: 5 },
+        { code: "CHIP_JAM", name: "Zablokowany ślimakowy wygarniacz wiórów", dept: "UR - Mechanika", category: "LOGISTICS", costMin: 5 }
     ],
-    5: [ // G-06: Prasa Krawędziowa
-        { code: "CROWNING_ERR", name: "Awaria automatycznej kompensacji strzałki", dept: "UR - Mechatronika", costMin: 60 },
-        { code: "PRESSURE_VALVE", name: "Zawieszenie zaworu proporcjonalnego tonarzu", dept: "UR - Hydraulika", costMin: 60 },
-        { code: "SAFETY_CURTAIN", name: "Zabrudzenie kurtyny optoelektronicznej DSP", dept: "BHP / Automatyka", costMin: 50 },
-        { code: "PUNCH_WEAR", name: "Zużycie krawędzi stempla segmentowego", dept: "UR - Oprzyrządowanie", costMin: 50 }
+    5: [
+        { code: "CROWNING_ERR", name: "Awaria automatycznej kompensacji strzałki", dept: "UR - Mechatronika", category: "MAINTENANCE", costMin: 6 },
+        { code: "PRESSURE_VALVE", name: "Zawieszenie zaworu proporcjonalnego tonażu", dept: "UR - Hydraulika", category: "MAINTENANCE", costMin: 6 },
+        { code: "SAFETY_CURTAIN", name: "Zabrudzenie kurtyny optoelektronicznej DSP", dept: "BHP / Automatyka", category: "MICRO", costMin: 5 },
+        { code: "PUNCH_WEAR", name: "Zużycie krawędzi stempla segmentowego", dept: "UR - Oprzyrządowanie", category: "TOOLING", costMin: 6 }
     ],
-    6: [ // G-07: Robot Spawalniczy A
-        { code: "ROBOT_COLL", name: "Zadziałanie złącza antykolizyjnego palnika", dept: "UR - Robotyka", costMin: 70 },
-        { code: "WIRE_FEED", name: "Zablokowanie drutu w pancerzu podajnika", dept: "Spawalnictwo / UR", costMin: 65 },
-        { code: "GAS_NOZZLE", name: "Zalepienie dyszy gazowej odpryskami", dept: "Stacja TPM Robota", costMin: 50 },
-        { code: "POSITIONER_SYN", name: "Błąd synchronizacji osi obrotnika", dept: "UR - Mechatronika", costMin: 70 }
+    6: [
+        { code: "ROBOT_COLL", name: "Zadziałanie złącza antykolizyjnego palnika", dept: "UR - Robotyka", category: "MAINTENANCE", costMin: 9 },
+        { code: "WIRE_FEED", name: "Zablokowanie drutu w pancerzu podajnika", dept: "Spawalnictwo / UR", category: "MAINTENANCE", costMin: 9 },
+        { code: "GAS_NOZZLE", name: "Zalepienie dyszy gazowej odpryskami", dept: "Stacja TPM Robota", category: "TOOLING", costMin: 8 },
+        { code: "POSITIONER_SYN", name: "Przezbrojenie przyrządu spawalniczego SMED", dept: "SMED / Przyrządy", category: "SMED", costMin: 9 }
     ],
-    7: [ // G-08: Spawanie MIG Manual
-        { code: "TORCH_FAIL", name: "Przepalenie wkładu prądowego / rękojeści", dept: "Gospodarka Narzędziowa", costMin: 45 },
-        { code: "GAS_LEAK", name: "Rozszczelnienie reduktora mieszanki Ar/CO2", dept: "Media Gazowe", costMin: 40 },
-        { code: "EARTH_CLAMP", name: "Upalenie zacisku masy stanowiskowej", dept: "UR - Elektryka", costMin: 35 },
-        { code: "POROSITY_REJ", name: "Porowatość spoiny: wilgoć lub przeciąg", dept: "Jakość / Spawalnictwo", costMin: 50 }
+    7: [
+        { code: "TORCH_FAIL", name: "Przepalenie wkładu prądowego / rękojeści", dept: "Gospodarka Narzędziowa", category: "TOOLING", costMin: 6 },
+        { code: "GAS_LEAK", name: "Rozszczelnienie reduktora mieszanki Ar/CO2", dept: "Media Gazowe", category: "MAINTENANCE", costMin: 6 },
+        { code: "EARTH_CLAMP", name: "Upalenie zacisku masy stanowiskowej", dept: "UR - Elektryka", category: "MAINTENANCE", costMin: 6 },
+        { code: "POROSITY_REJ", name: "Oczekiwanie na dostawę profili na stanowisko", dept: "Logistyka Wewnętrzna", category: "LOGISTICS", costMin: 6 }
     ],
-    8: [ // G-09: Przedgalwanika
-        { code: "HOLE_MISSING", name: "Wykryto brak otworów odpowietrzeń technologicznych", dept: "Kontrola Jakości FTY", costMin: 55 },
-        { code: "SLAG_UNGROUND", name: "Pozostawiony żużel i ostre krawędzie spoin", dept: "Obróbka Ślusarska", costMin: 45 },
-        { code: "TRAVERSE_CRANE", name: "Awaria wciągnika trawersy załadunkowej", dept: "UR - Dźwignice", costMin: 60 },
-        { code: "HOOK_BENT", name: "Zdeformowane zawiesia technologiczne do cynku", dept: "UR - Oprzyrządowanie", costMin: 40 }
+    8: [
+        { code: "HOLE_MISSING", name: "Zator w komorze załadunkowej śrutowni", dept: "Logistyka Wewnętrzna", category: "LOGISTICS", costMin: 5 },
+        { code: "SLAG_UNGROUND", name: "Spadek ciśnienia na turbinie rzutowej śrutu", dept: "UR - Mechanika", category: "MAINTENANCE", costMin: 5 },
+        { code: "TRAVERSE_CRANE", name: "Awaria wciągnika trawersy załadunkowej", dept: "UR - Dźwignice", category: "MAINTENANCE", costMin: 5 },
+        { code: "HOOK_BENT", name: "Zdeformowane zawiesia technologiczne", dept: "UR - Oprzyrządowanie", category: "TOOLING", costMin: 5 }
     ],
-    9: [ // G-10: Montaż Końcowy
-        { code: "FITTING_MISS", name: "Brak kompletu okuć rygli kontenerowych", dept: "Logistyka Komponentów", costMin: 55 },
-        { code: "TORQUE_DEV", name: "Błąd kalibracji klucza dynamometrycznego", dept: "Gospodarka Narzędziowa", costMin: 50 },
-        { code: "RIVET_GUN", name: "Awaria nitownicy pneumatyczno-hydraulicznej", dept: "UR - Pneumatyka", costMin: 45 },
-        { code: "SEAL_DEFECT", name: "Wada fabryczna gumowych uszczelek obwodowych", dept: "Dostawcy / Jakość", costMin: 50 }
+    9: [
+        { code: "FITTING_MISS", name: "Brak kompletu okuć rygli kontenerowych", dept: "Logistyka Komponentów", category: "LOGISTICS", costMin: 6 },
+        { code: "TORQUE_DEV", name: "Błąd kalibracji klucza dynamometrycznego", dept: "Gospodarka Narzędziowa", category: "TOOLING", costMin: 6 },
+        { code: "RIVET_GUN", name: "Awaria nitownicy pneumatyczno-hydraulicznej", dept: "UR - Pneumatyka", category: "MAINTENANCE", costMin: 6 },
+        { code: "SEAL_DEFECT", name: "Przezbrojenie stanowiska pod kontener 40ft", dept: "SMED / Montaż", category: "SMED", costMin: 6 }
     ]
 };
 
-// Kody błędów PLC dla trybu AUTO-MES
 const PLC_ERRORS = {
     0: [
-        { code: "PLC-BLM-01", desc: "E-STOP: Wykryto kolizję głowicy Precitec (Oś Z)" },
-        { code: "PLC-BLM-02", desc: "Czujnik optyczny: Zablokowany stół urobku / spiętrzenie rusztu" },
-        { code: "PLC-BLM-03", desc: "Niedostateczne ciśnienie azotu wspomagającego (< 18 bar)" },
-        { code: "PLC-BLM-04", desc: "Alarm rezonatora Fiber: Temperatura złącza > 45°C" },
-        { code: "PLC-BLM-05", desc: "Przeciążenie prądowe trawersy wygarniacza (Serwonapęd Y2)" },
-        { code: "PLC-BLM-06", desc: "Detekcja zanieczyszczenia dolnego szkiełka głowicy optycznej" }
+        { code: "PLC-BLM-01", desc: "E-STOP: Wykryto kolizję głowicy Precitec (Oś Z)", category: "MAINTENANCE" },
+        { code: "PLC-BLM-02", desc: "Czujnik optyczny: Zablokowany stół urobku / spiętrzenie rusztu", category: "LOGISTICS" },
+        { code: "PLC-BLM-03", desc: "Niedostateczne ciśnienie azotu wspomagającego (< 18 bar)", category: "MAINTENANCE" },
+        { code: "PLC-BLM-04", desc: "Alarm rezonatora Fiber: Temperatura złącza > 45°C", category: "MAINTENANCE" },
+        { code: "PLC-BLM-05", desc: "Przeciążenie prądowe trawersy wygarniacza (Serwonapęd Y2)", category: "MAINTENANCE" },
+        { code: "PLC-BLM-06", desc: "Detekcja zanieczyszczenia dolnego szkiełka głowicy optycznej", category: "TOOLING" }
     ],
     1: [
-        { code: "PLC-TUBE-01", desc: "Przekroczony dopuszczalny moment chwytaka obrotowego (Oś B)" },
-        { code: "PLC-TUBE-02", desc: "Zacięcie podajnika automatycznego w kasecie separacji wiązki" },
-        { code: "PLC-TUBE-03", desc: "Fotokomórka załadunku: Odchyłka prostoliniowości profilu" },
-        { code: "PLC-TUBE-04", desc: "Błąd sekwencji otwarcia suportów prowadzących profil długi" },
-        { code: "PLC-TUBE-05", desc: "Blokada mechaniczna zrzutnika uciętych detali na stół tylny" },
-        { code: "PLC-TUBE-06", desc: "Zużycie dyszy tnącej powyżej limitu tolerancji wiązki" }
+        { code: "PLC-TUBE-01", desc: "Przekroczony dopuszczalny moment chwytaka obrotowego (Oś B)", category: "MAINTENANCE" },
+        { code: "PLC-TUBE-02", desc: "Zacięcie podajnika automatycznego w kasecie separacji wiązki", category: "MAINTENANCE" },
+        { code: "PLC-TUBE-03", desc: "Fotokomórka załadunku: Odchyłka prostoliniowości profilu", category: "MICRO" },
+        { code: "PLC-TUBE-04", desc: "Błąd sekwencji otwarcia suportów prowadzących profil długi", category: "MAINTENANCE" },
+        { code: "PLC-TUBE-05", desc: "Blokada mechaniczna zrzutnika uciętych detali na stół tylny", category: "LOGISTICS" },
+        { code: "PLC-TUBE-06", desc: "Zużycie dyszy tnącej powyżej limitu tolerancji wiązki", category: "TOOLING" }
     ]
 };
 
@@ -125,11 +125,9 @@ let selectedFault = null;
 let durationType = "live";
 let durationMinutes = 0;
 
-// Stany akordeonu Open-Close
-let isOperatorOpen = false; // Startujemy ze zwiniętym operatorem, żeby od razu widzieć maszynę i usterki
+let isOperatorOpen = false;
 let isMachineOpen = false;
 
-// Zmienne stopera
 let liveTimerInterval = null;
 let liveSeconds = 0;
 let isLiveRunning = false;
@@ -144,8 +142,16 @@ let plcAlarmSeconds = 0;
 let plcAlarmInterval = null;
 let activePlcError = null;
 
-// 1. Inicjalizacja
+// 1. Inicjalizacja terminala i podpięcie do szyny MESBus
 function initTerminal() {
+    if (typeof MESBus !== "undefined" && typeof MESBus.init === "function") {
+        MESBus.init((isOnline) => {
+            console.log("[Terminal MES] Status połączenia z szyną:", isOnline ? "ONLINE (MQTT + Storage)" : "OFFLINE (Local Storage)");
+        });
+    } else {
+        console.error("[Terminal MES] KRYTYCZNY BŁĄD: Brak załadowanego pliku js/bus.js!");
+    }
+
     renderOperators();
     renderMachines();
     renderFaultsForMachine(selectedMachine.id);
@@ -228,8 +234,8 @@ function renderOperators() {
         btn.type = "button";
         const isActive = selectedOperator && selectedOperator.id === op.id;
         btn.className = `p-2.5 rounded-xl border text-left transition font-bold text-xs flex items-center gap-2.5 ${
-            isActive 
-                ? "border-gold-500 bg-gold-500/25 text-white shadow-md shadow-gold-500/10" 
+            isActive
+                ? "border-gold-500 bg-gold-500/25 text-white shadow-md shadow-gold-500/10"
                 : "border-graphite-750 bg-graphite-900 text-slate-300 hover:border-graphite-600 hover:text-white"
         }`;
         btn.onclick = () => selectOperator(op);
@@ -251,7 +257,6 @@ function renderOperators() {
 function selectOperator(op) {
     selectedOperator = op;
     renderOperators();
-    // Płynne zwinięcie operatora i rozwinięcie maszyn (Open-Close)
     isOperatorOpen = false;
     isMachineOpen = true;
     updateAccordionUI();
@@ -268,14 +273,14 @@ function renderMachines() {
         btn.type = "button";
         const isActive = selectedMachine && selectedMachine.id === m.id;
         btn.className = `p-2.5 rounded-xl border text-left transition ${
-            isActive 
-                ? "border-gold-500 bg-gold-500/20 shadow-md shadow-gold-500/10" 
+            isActive
+                ? "border-gold-500 bg-gold-500/20 shadow-md shadow-gold-500/10"
                 : "border-graphite-750 bg-graphite-900 hover:border-graphite-600"
         }`;
         btn.onclick = () => selectMachine(m);
         btn.innerHTML = `
             <div class="flex justify-between items-center">
-                <span class="text-xs font-mono-numbers font-extrabold ${isActive ? 'text-gold-400' : 'text-slate-400'}">${m.code}</span>
+                <span class="text-xs font-mono-numbers font-extrabold ${isActive ? 'text-gold-400' : 'text-slate-400'}">${m.code} (${m.dashboardId})</span>
                 <span class="w-2 h-2 rounded-full ${isActive ? 'bg-gold-400' : 'bg-slate-700'}"></span>
             </div>
             <h4 class="text-xs font-bold text-white mt-1 truncate">${m.name}</h4>
@@ -285,7 +290,7 @@ function renderMachines() {
 
     const badge = document.getElementById("active-machine-badge");
     if (badge && selectedMachine) {
-        badge.innerText = `${selectedMachine.code} (${selectedMachine.name})`;
+        badge.innerText = `${selectedMachine.code} / ${selectedMachine.dashboardId} (${selectedMachine.name})`;
     }
 }
 
@@ -294,8 +299,7 @@ function selectMachine(m) {
     renderMachines();
     renderFaultsForMachine(m.id);
     selectedFault = null;
-    
-    // Zwinięcie maszyny i skupienie na usterkach
+
     isMachineOpen = false;
     updateAccordionUI();
 
@@ -312,14 +316,13 @@ function renderFaultsForMachine(machineId) {
 
     const faults = STATION_FAULTS[machineId] || STATION_FAULTS[0];
 
-    // 4 usterki technologiczne
     faults.forEach(f => {
         const btn = document.createElement("button");
         btn.type = "button";
         const isActive = selectedFault && selectedFault.code === f.code;
         btn.className = `p-3 rounded-xl border-2 text-left transition flex flex-col justify-between ${
-            isActive 
-                ? "border-gold-400 bg-gold-500/25 fault-active-glow" 
+            isActive
+                ? "border-gold-400 bg-gold-500/25 fault-active-glow"
                 : "border-graphite-750 bg-graphite-950 hover:border-gold-500/60 fault-glow"
         }`;
         btn.onclick = () => selectFault(f);
@@ -335,20 +338,20 @@ function renderFaultsForMachine(machineId) {
         container.appendChild(btn);
     });
 
-    // 5. Kafelek INNE / NOWE
     const otherFault = {
         code: "FAULT_OTHER",
         name: "Inna / Nieskatalogowana usterka (Wpisz objaw poniżej)",
         dept: "Nowy incydent hali",
-        costMin: 50,
+        category: "MAINTENANCE",
+        costMin: 7,
         isCustom: true
     };
     const otherBtn = document.createElement("button");
     otherBtn.type = "button";
     const isOtherActive = selectedFault && selectedFault.code === "FAULT_OTHER";
     otherBtn.className = `p-3 rounded-xl border-2 text-left transition flex flex-col justify-between ${
-        isOtherActive 
-            ? "border-amber-400 bg-amber-500/25 fault-active-glow" 
+        isOtherActive
+            ? "border-amber-400 bg-amber-500/25 fault-active-glow"
             : "border-amber-500/50 bg-graphite-950 hover:border-amber-400"
     }`;
     otherBtn.onclick = () => selectFault(otherFault);
@@ -522,7 +525,7 @@ function checkDispatchReadiness() {
     }
 }
 
-// 8. Wysłanie zgłoszenia ręcznego do szyny MES
+// 8. Wysłanie zgłoszenia ręcznego bezpośrednio przez MESBus.publishEvent()
 function dispatchManualTelemetry() {
     if (!selectedFault) {
         alert("Wymóg Poka-Yoke: Zaznacz kod usterki przed nadaniem meldunku.");
@@ -548,11 +551,12 @@ function dispatchManualTelemetry() {
     const calculatedCost = durationMinutes * selectedFault.costMin;
 
     const payload = {
-        machineId: selectedMachine.id,
+        machineId: selectedMachine.dashboardId,
         machineName: selectedMachine.name,
         stationCode: selectedMachine.code,
         faultCode: selectedFault.code,
         faultDescription: faultName,
+        category: selectedFault.category || "MAINTENANCE",
         durationMin: durationMinutes,
         operatorName: selectedOperator.name,
         operatorNote: finalNote,
@@ -561,11 +565,15 @@ function dispatchManualTelemetry() {
         source: "MANUAL-MES"
     };
 
-    if (typeof publishTelemetryEvent === "function") {
-        publishTelemetryEvent(payload);
+    if (typeof MESBus !== "undefined" && typeof MESBus.publishEvent === "function") {
+        const sentPacket = MESBus.publishEvent(payload);
+        console.log("[Terminal MES] Wysłano pakiet na szynę:", sentPacket);
+    } else {
+        console.error("[Terminal MES] Błąd: MESBus.publishEvent niedostępne!");
+        alert("Błąd szyny komunikacyjnej: Sprawdź plik js/bus.js");
+        return;
     }
 
-    // Reset po wysłaniu - zachowujemy zwiniętego operatora i wybraną maszynę!
     selectedFault = null;
     renderFaultsForMachine(selectedMachine.id);
 
@@ -579,13 +587,13 @@ function dispatchManualTelemetry() {
     setTimeMode("live");
 
     const statusInd = document.getElementById("manual-status-indicator");
-    statusInd.innerHTML = `<span class="text-gold-400 font-bold">Meldunek nadany do MES (+2.0s bufor). Stanowisko gotowe.</span>`;
+    statusInd.innerHTML = `<span class="text-emerald-400 font-bold">Meldunek przesłany do Kokpitu MES (${payload.machineId}).</span>`;
     setTimeout(() => {
         statusInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Gotowość do nadania`;
-    }, 4000);
+    }, 4500);
 }
 
-// 9. Logika AUTO-MES
+// 9. Logika AUTO-MES (PLC)
 function startGlobalPlcUptimeCounter() {
     if (globalPlcUptimeInterval) clearInterval(globalPlcUptimeInterval);
     globalPlcUptimeInterval = setInterval(() => {
@@ -618,7 +626,7 @@ function triggerPlcStop() {
     if (!isPlcAlarm) {
         isPlcAlarm = true;
         plcAlarmSeconds = 0;
-        
+
         if (plcAlarmInterval) clearInterval(plcAlarmInterval);
         plcAlarmInterval = setInterval(() => {
             plcAlarmSeconds++;
@@ -698,26 +706,29 @@ function dispatchPlcTelemetry() {
     const targetMach = STATIONS_LIST[autoMachineId];
 
     const payload = {
-        machineId: targetMach.id,
+        machineId: targetMach.dashboardId,
         machineName: targetMach.name,
         stationCode: targetMach.code,
         faultCode: activePlcError.code,
         faultDescription: activePlcError.desc,
+        category: activePlcError.category || "MAINTENANCE",
         durationMin: calcMins,
         operatorName: "INTERFEJS PLC I/O",
         operatorNote: `Automatyczny zrzut rejestru sterownika: ${activePlcError.code}`,
         responsibleDept: "UR - Automatyka PLC",
-        costTotalPLN: calcMins * 75,
+        costTotalPLN: calcMins * 8,
         source: "AUTO-MES"
     };
 
-    if (typeof publishTelemetryEvent === "function") {
-        publishTelemetryEvent(payload);
+    if (typeof MESBus !== "undefined" && typeof MESBus.publishEvent === "function") {
+        const sentPacket = MESBus.publishEvent(payload);
+        console.log("[Terminal PLC] Wysłano alarm na szynę:", sentPacket);
+    } else {
+        alert("Błąd szyny komunikacyjnej: Sprawdź plik js/bus.js");
+        return;
     }
 
-    alert(`Alarm ${activePlcError.code} został przetransmitowany do szyny zdarzeń MES.`);
     resetPlcNormalState();
 }
 
-// Inicjalizacja skryptu
 window.addEventListener("DOMContentLoaded", initTerminal);
