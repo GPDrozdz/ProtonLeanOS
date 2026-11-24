@@ -1,16 +1,28 @@
 /**
- * Proton Lean OS - Silnik Wnioskowania AI Dual-Core (v4.1)
- * - 5-Why / Root Cause: gemini-3.8-flash (szybka analiza tekstowa + strukturalny JSON)
- * - 5S Vision Audyt LPA: gemini-3.8-flash (głęboka analiza wizyjna wysokiej rozdzielczości 1280px)
+ * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.2)
+ * - Kaskada modeli chmurowych: gemini-3.8-flash -> gemini-2.5-flash -> gemini-flash-latest
+ * - Automatyczne przełączanie przy błędach HTTP 503 (High Demand) / 429 (Rate Limit)
+ * - Zachowana obsługa kluczy AQ... oraz AIza...
  * - Pełny deterministyczny silnik awaryjny Edge Offline (Poka-Yoke + reguły TPM/SMED)
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
-const MODEL_TEXT_5WHY = 'gemini-3.8-flash';
-const MODEL_VISION_5S = 'gemini-3.8-flash';
 
-const ENGINE_TIMEOUT_5WHY_MS = 12000;
-const ENGINE_TIMEOUT_VISION_MS = 22000;
+// Kaskada aktywnych modeli zweryfikowanych na Twoim koncie AI Studio
+const MODEL_CASCADE_5WHY = [
+    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-flash-latest'
+];
+
+const MODEL_CASCADE_VISION = [
+    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-flash-latest'
+];
+
+const ENGINE_TIMEOUT_5WHY_MS = 18000;
+const ENGINE_TIMEOUT_VISION_MS = 25000;
 
 const GeminiEngine = {
     getApiKey() {
@@ -36,24 +48,30 @@ const GeminiEngine = {
     },
 
     // =========================================================================
-    // 1. ANALIZA PRZYCZYNOWA 5-WHY (gemini-3.8-flash + Edge Fallback)
+    // 1. ANALIZA PRZYCZYNOWA 5-WHY (Kaskada modeli + Edge Fallback)
     // =========================================================================
     async analyzeIncident(incident, humanNote = '') {
         if (!this.hasActiveApiKey()) {
             return this.runLocalEdgeInference(incident, humanNote, false);
         }
 
-        try {
-            return await this.fetchGemini5Why(incident, humanNote);
-        } catch (err) {
-            console.error('[5-Why Cloud Error - przełączam na Edge Fallback]:', err);
-            return this.runLocalEdgeInference(incident, humanNote, true);
+        let lastError = null;
+        for (const modelName of MODEL_CASCADE_5WHY) {
+            try {
+                return await this.fetchGemini5Why(modelName, incident, humanNote);
+            } catch (err) {
+                lastError = err;
+                console.warn(`[5-Why Failover] Model ${modelName} niedostępny (${err.message}) – próbuję kolejny węzeł...`);
+            }
         }
+
+        console.error('[5-Why Cloud Error - wszystkie węzły chmury zajęte, przełączam na Edge Fallback]:', lastError);
+        return this.runLocalEdgeInference(incident, humanNote, true);
     },
 
-    async fetchGemini5Why(incident, humanNote) {
+    async fetchGemini5Why(modelName, incident, humanNote) {
         const apiKey = this.getApiKey();
-        const url = `${this.getEndpoint(MODEL_TEXT_5WHY)}?key=${encodeURIComponent(apiKey)}`;
+        const url = `${this.getEndpoint(modelName)}?key=${encodeURIComponent(apiKey)}`;
 
         const prompt = `Jesteś Głównym Inżynierem Lean Manufacturing i Audytorem IATF 16949 w zakładzie konstrukcji stalowych.
 Przeprowadź rygorystyczną analizę przyczyn źródłowych metodą 5-Why dla poniższego przestoju produkcyjnego.
@@ -72,7 +90,7 @@ WYMAGANIA:
 3. Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown.`;
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_5WHY_MS);
+        const timer = setTimeout(() => controller.abort(new Error('Przekroczono limit czasu 18s')), ENGINE_TIMEOUT_5WHY_MS);
 
         try {
             const response = await fetch(url, {
@@ -115,7 +133,7 @@ WYMAGANIA:
             const parsed = JSON.parse(rawText);
             return {
                 ...parsed,
-                source: `Gemini ${MODEL_TEXT_5WHY} Live (Cloud AI)`
+                source: `Gemini ${modelName} Live (Cloud AI)`
             };
         } finally {
             clearTimeout(timer);
@@ -123,7 +141,7 @@ WYMAGANIA:
     },
 
     // =========================================================================
-    // 2. AUDYT WIZYJNY 5S VISION (gemini-3.8-flash + Skan Siatkowy Niezgodności)
+    // 2. AUDYT WIZYJNY 5S VISION (Kaskada modeli + Skan Siatkowy Niezgodności)
     // =========================================================================
     async analyzeVisual5S(imageBase64, station, auditorNotes = '') {
         if (!imageBase64) {
@@ -147,17 +165,23 @@ WYMAGANIA:
             return this.runLocalVisionFallback(station, auditorNotes, 'Tryb Offline (Brak klucza API)');
         }
 
-        try {
-            return await this.fetchGeminiVision5S(prepared.base64Data, prepared.mimeType, station, auditorNotes);
-        } catch (err) {
-            console.error('[5S Vision Cloud Error - przełączam na Edge Fallback]:', err);
-            return this.runLocalVisionFallback(station, auditorNotes, 'Edge Fallback (Przekroczony czas lub limit API)');
+        let lastError = null;
+        for (const modelName of MODEL_CASCADE_VISION) {
+            try {
+                return await this.fetchGeminiVision5S(modelName, prepared.base64Data, prepared.mimeType, station, auditorNotes);
+            } catch (err) {
+                lastError = err;
+                console.warn(`[5S Vision Failover] Model ${modelName} niedostępny (${err.message}) – próbuję kolejny węzeł...`);
+            }
         }
+
+        console.error('[5S Vision Cloud Error - wszystkie węzły chmury zajęte, przełączam na Edge Fallback]:', lastError);
+        return this.runLocalVisionFallback(station, auditorNotes, 'Edge Fallback (Przeciążenie serwerów API)');
     },
 
-    async fetchGeminiVision5S(base64Data, mimeType, station, auditorNotes) {
+    async fetchGeminiVision5S(modelName, base64Data, mimeType, station, auditorNotes) {
         const apiKey = this.getApiKey();
-        const url = `${this.getEndpoint(MODEL_VISION_5S)}?key=${encodeURIComponent(apiKey)}`;
+        const url = `${this.getEndpoint(modelName)}?key=${encodeURIComponent(apiKey)}`;
 
         const prompt = `Jesteś bezwzględnym, skrupulatnym Audytorem Wiodącym Lean Manufacturing / 5S oraz Inspektorem BHP na hali produkcyjnej i w warsztacie przemysłowym.
 Twoim zadaniem jest przeprowadzenie głębokiej inspekcji wizyjnej przesłanego zdjęcia stanowiska: "${station.name}" (Kod: ${station.code}, Obszar: ${station.area || 'Hala Produkcyjna'}).
@@ -179,7 +203,7 @@ ZASADY OCENIANIA (SKALA 1.00 - 5.00):
 Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_VISION_MS);
+        const timer = setTimeout(() => controller.abort(new Error('Przekroczono limit czasu 25s')), ENGINE_TIMEOUT_VISION_MS);
 
         try {
             const response = await fetch(url, {
@@ -253,7 +277,7 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
                 s5: s5.toFixed(2),
                 observations: parsed.observations || [],
                 capa: parsed.capa || 'Uporządkować stanowisko zgodnie ze standardem 5S.',
-                source: `Gemini ${MODEL_VISION_5S} Vision (Audyt LPA)`
+                source: `Gemini ${modelName} Vision (Audyt LPA)`
             };
         } finally {
             clearTimeout(timer);
@@ -345,13 +369,13 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
             w5 = "Przyczyna Źródłowa: Brak wózka przezbrojeniowego Kitting oraz brak tablicy cieni przy gnieździe.";
             capa = "Wdrożenie standardu SMED: przygotowanie wózka zestawczego (kitting) na 15 min przed końcem partii oraz szybkozłączy mechanicznych.";
             owner = "Inżynier Procesu / Lean Coordinator";
-        } else if (desc.includes('e-309') || desc.includes('tarcz') || desc.includes('dysz') || note.includes('zużyc')) {
-            w1 = `Konieczność awaryjnego zatrzymania ${machine} z powodu utraty jakości cięcia / zużycia narzędzia.`;
-            w2 = "Przekroczenie żywotności krawędzi skrawającej tarczy HSS lub degradacja otworu dyszy tnącej.";
-            w3 = "Narzędzie pracowało powyżej nominalnego licznika cykli bez zaplanowanej wymiany prewencyjnej.";
-            w4 = "Brak licznika zużycia narzędzi w panelu operatorskim oraz brak zapasu narzędzi w strefie podręcznej.";
-            w5 = "Przyczyna Źródłowa: Brak harmonogramu wymian prewencyjnych (TBM) powiązanego z tonażem/metrażem obróbki.";
-            capa = "Wdrożenie licznika cykli narzędzia w sterowniku (ostrzeżenie przy 85% resursu) oraz podręcznego magazynku narzędzi po regeneracji.";
+        } else if (desc.includes('e-309') || desc.includes('tarcz') || desc.includes('dysz') || desc.includes('lens') || note.includes('zużyc')) {
+            w1 = `Konieczność awaryjnego zatrzymania ${machine} z powodu utraty jakości cięcia / zużycia elementu optycznego lub tnącego.`;
+            w2 = "Przekroczenie żywotności krawędzi skrawającej / zabrudzenie dolnego szkiełka ochronnego głowicy.";
+            w3 = "Narzędzie pracowało powyżej nominalnego licznika cykli bez zaplanowanej wymiany lub czyszczenia prewencyjnego.";
+            w4 = "Brak licznika zużycia narzędzi w panelu operatorskim oraz brak zapasu części eksploatacyjnych w strefie podręcznej.";
+            w5 = "Przyczyna Źródłowa: Brak harmonogramu wymian prewencyjnych (TBM) powiązanego z metrażem cięcia.";
+            capa = "Wdrożenie licznika cykli narzędzia w sterowniku (ostrzeżenie przy 85% resursu) oraz karty kontroli optyki przed startem zmiany.";
             owner = "Narzędziownia / Technologia";
         } else if (desc.includes('e-212') || desc.includes('ciśnieni') || desc.includes('podajnik') || note.includes('pneumat')) {
             w1 = `Zatrzymanie podawania materiału na ${machine} wskutek spadku ciśnienia w układzie roboczym.`;
@@ -361,7 +385,7 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
             w5 = "Przyczyna Źródłowa: Brak standaryzacji przeglądów układów pneumatycznych i hydraulicznych (TPM-02).";
             capa = "Oznaczenie zakresu roboczego na manometrze (strefa zielona 6.0–6.5 bar), wymiana szybkozłączy na skręcane oraz dodanie punktu do karty TPM.";
             owner = "Utrzymanie Ruchu (Mechanika)";
-        } else if (desc.includes('e-104') || desc.includes('zator') || desc.includes('urobk') || desc.includes('logistyk')) {
+        } else if (desc.includes('e-104') || desc.includes('zator') || desc.includes('urobk') || desc.includes('blm_jam')) {
             w1 = `Zablokowanie ciągłego przepływu na ${machine} z powodu przepełnienia stołu odbiorczego urobku.`;
             w2 = "Brak wolnych pojemników transportowych lub nieodebrane gotowe detale przez transport wewnętrzny (Milk-Run).";
             w3 = "Operator musiał opuścić stanowisko w celu poszukiwania pustych palet i ręcznego rozładunku.";
@@ -369,13 +393,13 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
             w5 = "Przyczyna Źródłowa: Brak wyznaczonych pól odkładczych FIFO oraz brak zsynchronizowanej pętli logistycznej (Milk-Run).";
             capa = "Wyznaczenie żółtych pól buforowych FIFO przy gnieździe oraz wdrożenie sygnału Kanban dla wózka widłowego przy poziomie 75% bufora.";
             owner = "Logistyka Wewnętrzna / Magazyn";
-        } else if (desc.includes('m-019') || desc.includes('czujnik') || desc.includes('bazowan')) {
-            w1 = `Błąd potwierdzenia pozycji detalu w przyrządzie bazującym na stanowisku ${machine}.`;
-            w2 = "Zabrudzenie czoła czujnika indukcyjnego opiłkami metalowymi lub minimalne przesunięcie zderzaka.";
-            w3 = "Wióry i zgorzelina gromadzą się w strefie bazowania z powodu braku przedmuchu między cyklami.";
-            w4 = "Brak osłony mechanicznej czujnika oraz brak standardu czyszczenia baz po każdej partii.";
-            w5 = "Przyczyna Źródłowa: Błąd konstrukcyjny mocowania czujnika w strefie bezpośredniego opadu wiórów.";
-            capa = "Przeniesienie czujnika w strefę chronioną z trzpieniem pośrednim (Poka-Yoke) oraz montaż dyszy przedmuchu baz.";
+        } else if (desc.includes('m-019') || desc.includes('czujnik') || desc.includes('bazowan') || desc.includes('sheet_coll')) {
+            w1 = `Błąd potwierdzenia pozycji detalu / kolizja z wypaczonym arkuszem na stanowisku ${machine}.`;
+            w2 = "Zabrudzenie czoła czujnika lub deformacja materiału wejściowego przekraczająca prześwit głowicy.";
+            w3 = "Brak wstępnej weryfikacji płaskości arkusza i przedmuchu strefy bazowania między cyklami.";
+            w4 = "Brak osłony mechanicznej oraz brak standardu kontroli geometrii wsadu przed załadunkiem.";
+            w5 = "Przyczyna Źródłowa: Brak procedury kontroli wejściowej arkuszy oraz zabezpieczenia strefy bazowania (Poka-Yoke).";
+            capa = "Wdrożenie szablonu kontroli płaskości arkuszy przed stołem podawczym oraz automatycznego przedmuchu baz.";
             owner = "Utrzymanie Ruchu (Automatyka)";
         }
 
