@@ -1,28 +1,24 @@
 /**
- * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.2)
+ * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.3)
  * - Kaskada modeli chmurowych: gemini-3.8-flash -> gemini-2.5-flash -> gemini-flash-latest
- * - Automatyczne przełączanie przy błędach HTTP 503 (High Demand) / 429 (Rate Limit)
- * - Zachowana obsługa kluczy AQ... oraz AIza...
- * - Pełny deterministyczny silnik awaryjny Edge Offline (Poka-Yoke + reguły TPM/SMED)
+ * - Budżet czasu per węzeł (9s / 14s / 14s) + rozróżnienie błędów 400 (klucz) vs 503/429 (ruch)
+ * - Twarde warunki brzegowe (Poka-Yoke) na dane wejściowe, jasność/ostrość kadrów 5S oraz strukturę JSON
+ * - Pełny deterministyczny silnik awaryjny Edge Offline (reguły TPM / SMED / BHP)
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
 
-// Kaskada aktywnych modeli zweryfikowanych na Twoim koncie AI Studio
 const MODEL_CASCADE_5WHY = [
-    'gemini-3.8-flash',
-    'gemini-2.5-flash',
-    'gemini-flash-latest'
+    { name: 'gemini-3.8-flash', timeoutMs: 9000 },
+    { name: 'gemini-2.5-flash', timeoutMs: 14000 },
+    { name: 'gemini-flash-latest', timeoutMs: 14000 }
 ];
 
 const MODEL_CASCADE_VISION = [
-    'gemini-3.8-flash',
-    'gemini-2.5-flash',
-    'gemini-flash-latest'
+    { name: 'gemini-3.8-flash', timeoutMs: 14000 },
+    { name: 'gemini-2.5-flash', timeoutMs: 20000 },
+    { name: 'gemini-flash-latest', timeoutMs: 20000 }
 ];
-
-const ENGINE_TIMEOUT_5WHY_MS = 18000;
-const ENGINE_TIMEOUT_VISION_MS = 25000;
 
 const GeminiEngine = {
     getApiKey() {
@@ -40,36 +36,68 @@ const GeminiEngine = {
 
     hasActiveApiKey() {
         const k = this.getApiKey();
-        return k.length > 20 && !k.startsWith('/*');
+        return k.length > 20 && !k.startsWith('/*') && !k.includes(' ');
     },
 
     getEndpoint(modelName) {
         return `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
     },
 
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    },
+
     // =========================================================================
-    // 1. ANALIZA PRZYCZYNOWA 5-WHY (Kaskada modeli + Edge Fallback)
+    // 1. ANALIZA PRZYCZYNOWA 5-WHY (Kaskada modeli + Warunki Brzegowe)
     // =========================================================================
     async analyzeIncident(incident, humanNote = '') {
+        // Warunek brzegowy 1: Walidacja i normalizacja danych wejściowych incydentu
+        const safeIncident = this.sanitizeIncidentInput(incident);
+        const safeNote = String(humanNote || '').trim().slice(0, 600);
+
         if (!this.hasActiveApiKey()) {
-            return this.runLocalEdgeInference(incident, humanNote, false);
+            return this.runLocalEdgeInference(safeIncident, safeNote, false);
         }
 
         let lastError = null;
-        for (const modelName of MODEL_CASCADE_5WHY) {
+        for (let i = 0; i < MODEL_CASCADE_5WHY.length; i++) {
+            const node = MODEL_CASCADE_5WHY[i];
             try {
-                return await this.fetchGemini5Why(modelName, incident, humanNote);
+                const result = await this.fetchGemini5Why(node.name, node.timeoutMs, safeIncident, safeNote);
+                return result;
             } catch (err) {
                 lastError = err;
-                console.warn(`[5-Why Failover] Model ${modelName} niedostępny (${err.message}) – próbuję kolejny węzeł...`);
+                // Warunek brzegowy 2: Błąd autoryzacji klucza (400/401/403) przerywa kaskadę natychmiast
+                if (err.isAuthError) {
+                    console.error('[5-Why Auth Error - nieprawidłowy klucz API, przerywam kaskadę]:', err.message);
+                    break;
+                }
+                console.warn(`[5-Why Failover ${i + 1}/${MODEL_CASCADE_5WHY.length}] Węzeł ${node.name} zajęty (${err.message}) – przełączam na kolejny...`);
+                if (i < MODEL_CASCADE_5WHY.length - 1) {
+                    await this.sleep(350);
+                }
             }
         }
 
-        console.error('[5-Why Cloud Error - wszystkie węzły chmury zajęte, przełączam na Edge Fallback]:', lastError);
-        return this.runLocalEdgeInference(incident, humanNote, true);
+        console.error('[5-Why Cloud Error - wszystkie węzły chmury niedostępne, uruchamiam Edge Fallback]:', lastError);
+        return this.runLocalEdgeInference(safeIncident, safeNote, true);
     },
 
-    async fetchGemini5Why(modelName, incident, humanNote) {
+    sanitizeIncidentInput(raw) {
+        const inc = raw || {};
+        const rawDuration = Number(inc.durationMin);
+        return {
+            machineId: String(inc.machineId || 'G-00').trim(),
+            machineName: String(inc.machineName || 'Nieznane Gniazdo Robocze').trim(),
+            faultCode: String(inc.faultCode || 'BRAK-KODU').trim(),
+            faultDescription: String(inc.faultDescription || 'Nieokreślone zatrzymanie cyklu maszyny').trim().slice(0, 300),
+            durationMin: Number.isFinite(rawDuration) && rawDuration > 0 ? Math.min(1440, Math.round(rawDuration)) : 1,
+            shiftId: inc.shiftId || 1,
+            shiftName: String(inc.shiftName || `Zmiana ${inc.shiftId || 1}`).trim()
+        };
+    },
+
+    async fetchGemini5Why(modelName, timeoutMs, incident, humanNote) {
         const apiKey = this.getApiKey();
         const url = `${this.getEndpoint(modelName)}?key=${encodeURIComponent(apiKey)}`;
 
@@ -78,10 +106,10 @@ Przeprowadź rygorystyczną analizę przyczyn źródłowych metodą 5-Why dla po
 
 DANE ZDARZENIA:
 - Maszyna: ${incident.machineName} (${incident.machineId})
-- Kod błędu: ${incident.faultCode || 'N/A'}
+- Kod błędu: ${incident.faultCode}
 - Opis przestoju: ${incident.faultDescription}
-- Czas straty: ${incident.durationMin} minut
-- Zmiana robocza: ${incident.shiftName || 'Zmiana ' + incident.shiftId}
+- Czas straty: ${incident.durationMin} minut (${incident.durationMin <= 5 ? 'mikroprzestój' : 'przestój istotny'})
+- Zmiana robocza: ${incident.shiftName}
 - Obserwacja operatora/lidera z Gemba: "${humanNote || 'Brak dodatkowych uwag'}"
 
 WYMAGANIA:
@@ -90,7 +118,7 @@ WYMAGANIA:
 3. Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown.`;
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(new Error('Przekroczono limit czasu 18s')), ENGINE_TIMEOUT_5WHY_MS);
+        const timer = setTimeout(() => controller.abort(new Error(`Timeout ${timeoutMs / 1000}s`)), timeoutMs);
 
         try {
             const response = await fetch(url, {
@@ -123,7 +151,11 @@ WYMAGANIA:
 
             if (!response.ok) {
                 const errText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errText}`);
+                const err = new Error(`HTTP ${response.status}: ${errText.slice(0, 180)}`);
+                if (response.status === 400 || response.status === 401 || response.status === 403) {
+                    err.isAuthError = true;
+                }
+                throw err;
             }
 
             const data = await response.json();
@@ -131,8 +163,22 @@ WYMAGANIA:
             if (!rawText) throw new Error('Pusta odpowiedź z modelu Gemini 5-Why');
 
             const parsed = JSON.parse(rawText);
+
+            // Warunek brzegowy 3: Weryfikacja kompletności łańcucha 5-Why z odpowiedzi AI
+            const requiredKeys = ['w1', 'w2', 'w3', 'w4', 'w5', 'capa'];
+            const isComplete = requiredKeys.every(k => typeof parsed[k] === 'string' && parsed[k].trim().length >= 8);
+            if (!isComplete) {
+                throw new Error('Niekompletna struktura 5-Why zwrócona przez model');
+            }
+
             return {
-                ...parsed,
+                w1: parsed.w1.trim(),
+                w2: parsed.w2.trim(),
+                w3: parsed.w3.trim(),
+                w4: parsed.w4.trim(),
+                w5: parsed.w5.trim(),
+                capa: parsed.capa.trim(),
+                owner: (parsed.owner || 'Utrzymanie Ruchu / Technologia').trim(),
                 source: `Gemini ${modelName} Live (Cloud AI)`
             };
         } finally {
@@ -141,14 +187,35 @@ WYMAGANIA:
     },
 
     // =========================================================================
-    // 2. AUDYT WIZYJNY 5S VISION (Kaskada modeli + Skan Siatkowy Niezgodności)
+    // 2. AUDYT WIZYJNY 5S VISION (Kaskada modeli + Skan Siatkowy + Poka-Yoke)
     // =========================================================================
     async analyzeVisual5S(imageBase64, station, auditorNotes = '') {
-        if (!imageBase64) {
-            return this.runLocalVisionFallback(station, auditorNotes, 'Brak zdjęcia – ocena na podstawie wywiadu LPA');
+        const safeStation = {
+            name: String(station?.name || 'Stanowisko Produkcyjne').trim(),
+            code: String(station?.code || 'G-01').trim(),
+            area: String(station?.area || 'Hala Produkcyjna').trim()
+        };
+        const safeNotes = String(auditorNotes || '').trim().slice(0, 500);
+
+        if (!imageBase64 || typeof imageBase64 !== 'string' || !imageBase64.includes(',')) {
+            return this.runLocalVisionFallback(safeStation, safeNotes, 'Brak zdjęcia – ocena na podstawie wywiadu LPA');
         }
 
         const prepared = await this.prepareImageForVision(imageBase64);
+
+        // Warunki brzegowe jakości obrazu (Poka-Yoke optyczny)
+        if (prepared.isCorrupted) {
+            return {
+                score: "1.00",
+                s1: "1.00", s2: "1.00", s3: "1.00", s4: "1.00", s5: "1.00",
+                observations: [
+                    { text: "Uszkodzony lub nieobsługiwany plik obrazu – brak możliwości odczytu klatki", pen: "-3.00 pkt (Poka-Yoke)" }
+                ],
+                capa: "Wgrać poprawny plik graficzny JPG lub PNG wykonany bezpośrednio na stanowisku.",
+                source: "Poka-Yoke Pre-Flight (Uszkodzony plik)"
+            };
+        }
+
         if (prepared.isTooDark) {
             return {
                 score: "1.50",
@@ -161,30 +228,50 @@ WYMAGANIA:
             };
         }
 
+        if (prepared.isOverexposed) {
+            return {
+                score: "1.80",
+                s1: "1.80", s2: "1.80", s3: "1.80", s4: "1.80", s5: "1.80",
+                observations: [
+                    { text: "Kadr skrajnie prześwietlony (odblask spawania lub lampa skierowana w obiektyw) – nieczytelne detale", pen: "-2.20 pkt (Poka-Yoke)" }
+                ],
+                capa: "Wykonać zdjęcie pod innym kątem z pominięciem bezpośredniego źródła światła lub łuku spawalniczego.",
+                source: "Poka-Yoke Pre-Flight (Prześwietlony kadr)"
+            };
+        }
+
         if (!this.hasActiveApiKey()) {
-            return this.runLocalVisionFallback(station, auditorNotes, 'Tryb Offline (Brak klucza API)');
+            return this.runLocalVisionFallback(safeStation, safeNotes, 'Tryb Offline (Brak klucza API)');
         }
 
         let lastError = null;
-        for (const modelName of MODEL_CASCADE_VISION) {
+        for (let i = 0; i < MODEL_CASCADE_VISION.length; i++) {
+            const node = MODEL_CASCADE_VISION[i];
             try {
-                return await this.fetchGeminiVision5S(modelName, prepared.base64Data, prepared.mimeType, station, auditorNotes);
+                return await this.fetchGeminiVision5S(node.name, node.timeoutMs, prepared.base64Data, prepared.mimeType, safeStation, safeNotes);
             } catch (err) {
                 lastError = err;
-                console.warn(`[5S Vision Failover] Model ${modelName} niedostępny (${err.message}) – próbuję kolejny węzeł...`);
+                if (err.isAuthError) {
+                    console.error('[5S Vision Auth Error - nieprawidłowy klucz API]:', err.message);
+                    break;
+                }
+                console.warn(`[5S Vision Failover ${i + 1}/${MODEL_CASCADE_VISION.length}] Węzeł ${node.name} zajęty (${err.message}) – przełączam na kolejny...`);
+                if (i < MODEL_CASCADE_VISION.length - 1) {
+                    await this.sleep(350);
+                }
             }
         }
 
-        console.error('[5S Vision Cloud Error - wszystkie węzły chmury zajęte, przełączam na Edge Fallback]:', lastError);
-        return this.runLocalVisionFallback(station, auditorNotes, 'Edge Fallback (Przeciążenie serwerów API)');
+        console.error('[5S Vision Cloud Error - wszystkie węzły chmury niedostępne, uruchamiam Edge Fallback]:', lastError);
+        return this.runLocalVisionFallback(safeStation, safeNotes, 'Edge Fallback (Przeciążenie serwerów API)');
     },
 
-    async fetchGeminiVision5S(modelName, base64Data, mimeType, station, auditorNotes) {
+    async fetchGeminiVision5S(modelName, timeoutMs, base64Data, mimeType, station, auditorNotes) {
         const apiKey = this.getApiKey();
         const url = `${this.getEndpoint(modelName)}?key=${encodeURIComponent(apiKey)}`;
 
         const prompt = `Jesteś bezwzględnym, skrupulatnym Audytorem Wiodącym Lean Manufacturing / 5S oraz Inspektorem BHP na hali produkcyjnej i w warsztacie przemysłowym.
-Twoim zadaniem jest przeprowadzenie głębokiej inspekcji wizyjnej przesłanego zdjęcia stanowiska: "${station.name}" (Kod: ${station.code}, Obszar: ${station.area || 'Hala Produkcyjna'}).
+Twoim zadaniem jest przeprowadzenie głębokiej inspekcji wizyjnej przesłanego zdjęcia stanowiska: "${station.name}" (Kod: ${station.code}, Obszar: ${station.area}).
 Wytyczne z obchodu LPA: "${auditorNotes || 'Standardowy audyt 5S + BHP'}".
 
 METODYKA SKANOWANIA OBRAZU (PRZESZUKAJ KAŻDY KWADRANT KADRU):
@@ -203,7 +290,7 @@ ZASADY OCENIANIA (SKALA 1.00 - 5.00):
 Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(new Error('Przekroczono limit czasu 25s')), ENGINE_TIMEOUT_VISION_MS);
+        const timer = setTimeout(() => controller.abort(new Error(`Timeout ${timeoutMs / 1000}s`)), timeoutMs);
 
         try {
             const response = await fetch(url, {
@@ -251,7 +338,11 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
 
             if (!response.ok) {
                 const errText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errText}`);
+                const err = new Error(`HTTP ${response.status}: ${errText.slice(0, 180)}`);
+                if (response.status === 400 || response.status === 401 || response.status === 403) {
+                    err.isAuthError = true;
+                }
+                throw err;
             }
 
             const data = await response.json();
@@ -275,8 +366,10 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
                 s3: s3.toFixed(2),
                 s4: s4.toFixed(2),
                 s5: s5.toFixed(2),
-                observations: parsed.observations || [],
-                capa: parsed.capa || 'Uporządkować stanowisko zgodnie ze standardem 5S.',
+                observations: Array.isArray(parsed.observations) && parsed.observations.length > 0
+                    ? parsed.observations
+                    : [{ text: 'Zakończono inspekcję wizyjną stanowiska.', pen: '-0.50 pkt (5S)' }],
+                capa: (parsed.capa || 'Uporządkować stanowisko zgodnie ze standardem 5S.').trim(),
                 source: `Gemini ${modelName} Vision (Audyt LPA)`
             };
         } finally {
@@ -288,10 +381,14 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
         return new Promise((resolve) => {
             const img = new Image();
             img.onload = () => {
+                if (!img.width || !img.height) {
+                    resolve({ isCorrupted: true });
+                    return;
+                }
                 const maxDim = 1280;
                 const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-                const w = Math.round(img.width * scale);
-                const h = Math.round(img.height * scale);
+                const w = Math.max(1, Math.round(img.width * scale));
+                const h = Math.max(1, Math.round(img.height * scale));
 
                 const canvas = document.createElement('canvas');
                 canvas.width = w;
@@ -316,15 +413,13 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
                 resolve({
                     base64Data,
                     mimeType: 'image/jpeg',
-                    isTooDark: avgLum < 18
+                    isCorrupted: false,
+                    isTooDark: avgLum < 18,
+                    isOverexposed: avgLum > 246
                 });
             };
             img.onerror = () => {
-                resolve({
-                    base64Data: dataUrl.split(',')[1] || '',
-                    mimeType: 'image/jpeg',
-                    isTooDark: false
-                });
+                resolve({ isCorrupted: true });
             };
             img.src = dataUrl;
         });
