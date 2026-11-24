@@ -1,24 +1,25 @@
 /**
- * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.5)
- * - Kaskada modeli zweryfikowanych na koncie: gemini-4-argon -> gemini-4-carbon -> gemini-3.8-flash -> gemini-3.7-flash
- * - Obsługa tekstu (5-Why JSON) oraz analizy wizyjnej (5S Vision 1280px)
- * - Twarde warunki brzegowe (Poka-Yoke) + deterministyczny silnik Edge Offline
+ * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.6)
+ * - Kaskada modeli o wysokiej dostępności w Free Tier:
+ *   gemini-3.1-flash-lite -> gemini-2.5-flash-lite -> gemini-3.8-flash -> gemma-4-31b-it
+ * - Automatyczne dostosowanie generationConfig dla modeli Gemma (bez responseSchema)
+ * - Twarde warunki brzegowe (Poka-Yoke) na dane wejściowe, jasność kadrów 5S oraz strukturę JSON
+ * - Pełny deterministyczny silnik awaryjny Edge Offline (reguły TPM / SMED / BHP)
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
 
 const MODEL_CASCADE_5WHY = [
-    { name: 'gemini-4-argon', timeoutMs: 11000 },
-    { name: 'gemini-4-carbon', timeoutMs: 12000 },
-    { name: 'gemini-3.8-flash', timeoutMs: 12000 },
-    { name: 'gemini-3.7-flash', timeoutMs: 12000 }
+    { name: 'gemini-3.1-flash-lite', timeoutMs: 12000 },
+    { name: 'gemini-2.5-flash-lite', timeoutMs: 12000 },
+    { name: 'gemini-3.8-flash', timeoutMs: 14000 },
+    { name: 'gemma-4-31b-it', timeoutMs: 16000 }
 ];
 
 const MODEL_CASCADE_VISION = [
-    { name: 'gemini-4-argon', timeoutMs: 16000 },
-    { name: 'gemini-4-carbon', timeoutMs: 18000 },
-    { name: 'gemini-3.8-flash', timeoutMs: 18000 },
-    { name: 'gemini-3.7-flash', timeoutMs: 18000 }
+    { name: 'gemini-3.1-flash-lite', timeoutMs: 18000 },
+    { name: 'gemini-2.5-flash-lite', timeoutMs: 18000 },
+    { name: 'gemini-3.8-flash', timeoutMs: 20000 }
 ];
 
 const GeminiEngine = {
@@ -41,15 +42,24 @@ const GeminiEngine = {
     },
 
     getEndpoint(modelName) {
-        return `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+        return `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){modelName}:generateContent`;
     },
 
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     },
 
+    extractCleanJson(rawText) {
+        const cleaned = String(rawText || '')
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/```\s*$/i, '')
+            .trim();
+        return JSON.parse(cleaned);
+    },
+
     // =========================================================================
-    // 1. ANALIZA PRZYCZYNOWA 5-WHY (gemini-4-argon + Kaskada Failover)
+    // 1. ANALIZA PRZYCZYNOWA 5-WHY (Kaskada Lite/Flash/Gemma + Warunki Brzegowe)
     // =========================================================================
     async analyzeIncident(incident, humanNote = '') {
         const safeIncident = this.sanitizeIncidentInput(incident);
@@ -98,6 +108,7 @@ const GeminiEngine = {
     async fetchGemini5Why(modelName, timeoutMs, incident, humanNote) {
         const apiKey = this.getApiKey();
         const url = `${this.getEndpoint(modelName)}?key=${encodeURIComponent(apiKey)}`;
+        const isGemma = modelName.toLowerCase().includes('gemma');
 
         const prompt = `Jesteś Głównym Inżynierem Lean Manufacturing i Audytorem IATF 16949 w zakładzie konstrukcji stalowych.
 Przeprowadź rygorystyczną analizę przyczyn źródłowych metodą 5-Why dla poniższego przestoju produkcyjnego.
@@ -113,7 +124,28 @@ DANE ZDARZENIA:
 WYMAGANIA:
 1. Każde kolejne "Dlaczego" (w1 -> w5) musi wynikać logicznie z poprzedniego i schodzić od objawu mechanicznego/procesowego do systemowej przyczyny źródłowej (brak standardu, brak Poka-Yoke, luka w TPM/SMED).
 2. Działanie korygujące (capa) musi być konkretne, techniczne i nie może naruszać zasad BHP (zakaz omijania czujników i kurtyn).
-3. Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown.`;
+3. Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown o dokładnie tych kluczach:
+{"w1": "...", "w2": "...", "w3": "...", "w4": "...", "w5": "...", "capa": "...", "owner": "..."}`;
+
+        const generationConfig = isGemma
+            ? { temperature: 0.25 }
+            : {
+                temperature: 0.25,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: "OBJECT",
+                    properties: {
+                        w1: { type: "STRING" },
+                        w2: { type: "STRING" },
+                        w3: { type: "STRING" },
+                        w4: { type: "STRING" },
+                        w5: { type: "STRING" },
+                        capa: { type: "STRING" },
+                        owner: { type: "STRING" }
+                    },
+                    required: ["w1", "w2", "w3", "w4", "w5", "capa", "owner"]
+                }
+            };
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(new Error(`Timeout ${timeoutMs / 1000}s`)), timeoutMs);
@@ -125,23 +157,7 @@ WYMAGANIA:
                 signal: controller.signal,
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        temperature: 0.25,
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                w1: { type: "STRING" },
-                                w2: { type: "STRING" },
-                                w3: { type: "STRING" },
-                                w4: { type: "STRING" },
-                                w5: { type: "STRING" },
-                                capa: { type: "STRING" },
-                                owner: { type: "STRING" }
-                            },
-                            required: ["w1", "w2", "w3", "w4", "w5", "capa", "owner"]
-                        }
-                    }
+                    generationConfig
                 })
             });
 
@@ -160,7 +176,7 @@ WYMAGANIA:
             const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!rawText) throw new Error('Pusta odpowiedź z modelu Gemini 5-Why');
 
-            const parsed = JSON.parse(rawText);
+            const parsed = this.extractCleanJson(rawText);
             const requiredKeys = ['w1', 'w2', 'w3', 'w4', 'w5', 'capa'];
             if (!requiredKeys.every(k => typeof parsed[k] === 'string' && parsed[k].trim().length >= 8)) {
                 throw new Error('Niekompletna struktura 5-Why zwrócona przez model');
@@ -182,7 +198,7 @@ WYMAGANIA:
     },
 
     // =========================================================================
-    // 2. AUDYT WIZYJNY 5S VISION (gemini-4-argon + Kaskada + Poka-Yoke)
+    // 2. AUDYT WIZYJNY 5S VISION (Kaskada Lite/Flash + Poka-Yoke optyczny)
     // =========================================================================
     async analyzeVisual5S(imageBase64, station, auditorNotes = '') {
         const safeStation = {
@@ -343,7 +359,7 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
             const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!rawText) throw new Error('Pusta odpowiedź z modelu Gemini Vision');
 
-            const parsed = JSON.parse(rawText);
+            const parsed = this.extractCleanJson(rawText);
 
             const clamp = (v) => Math.max(1.0, Math.min(5.0, Number(v) || 2.5));
             const s1 = clamp(parsed.s1);
