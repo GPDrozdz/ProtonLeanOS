@@ -1,10 +1,10 @@
 /**
- * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.6)
+ * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.7)
+ * - Zabezpieczenie URL przed konwersją Markdown ('https:' + '//...')
  * - Kaskada modeli o wysokiej dostępności w Free Tier:
  *   gemini-3.1-flash-lite -> gemini-2.5-flash-lite -> gemini-3.8-flash -> gemma-4-31b-it
  * - Automatyczne dostosowanie generationConfig dla modeli Gemma (bez responseSchema)
- * - Twarde warunki brzegowe (Poka-Yoke) na dane wejściowe, jasność kadrów 5S oraz strukturę JSON
- * - Pełny deterministyczny silnik awaryjny Edge Offline (reguły TPM / SMED / BHP)
+ * - Twarde warunki brzegowe (Poka-Yoke) + deterministyczny silnik Edge Offline
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
@@ -42,7 +42,9 @@ const GeminiEngine = {
     },
 
     getEndpoint(modelName) {
-        return `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){modelName}:generateContent`;
+        const proto = 'https:';
+        const host = '//generativelanguage.googleapis.com/v1beta/models/';
+        return proto + host + modelName + ':generateContent';
     },
 
     sleep(ms) {
