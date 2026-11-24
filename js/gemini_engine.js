@@ -1,24 +1,25 @@
 /**
- * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.7)
- * - Zabezpieczenie URL przed konwersją Markdown ('https:' + '//...')
- * - Kaskada modeli o wysokiej dostępności w Free Tier:
- *   gemini-3.1-flash-lite -> gemini-2.5-flash-lite -> gemini-3.8-flash -> gemma-4-31b-it
- * - Automatyczne dostosowanie generationConfig dla modeli Gemma (bez responseSchema)
- * - Twarde warunki brzegowe (Poka-Yoke) + deterministyczny silnik Edge Offline
+ * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.8)
+ * - Kaskada oparta na empirycznie zweryfikowanych węzłach HTTP 200 OK:
+ *   gemini-3.5-flash-lite -> gemini-3-flash-preview -> gemini-3.5-flash -> gemini-3.8-flash
+ * - Lekkie zapytania bez narzutu kompilatora responseSchema (czysty parser JSON + Poka-Yoke)
+ * - Zabezpieczenie URL przed konwersją Markdown
+ * - Pełny deterministyczny silnik awaryjny Edge Offline (reguły TPM / SMED / BHP)
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
 
 const MODEL_CASCADE_5WHY = [
-    { name: 'gemini-3.1-flash-lite', timeoutMs: 12000 },
-    { name: 'gemini-2.5-flash-lite', timeoutMs: 12000 },
-    { name: 'gemini-3.8-flash', timeoutMs: 14000 },
-    { name: 'gemma-4-31b-it', timeoutMs: 16000 }
+    { name: 'gemini-3.5-flash-lite', timeoutMs: 12000 },
+    { name: 'gemini-3-flash-preview', timeoutMs: 14000 },
+    { name: 'gemini-3.5-flash', timeoutMs: 14000 },
+    { name: 'gemini-3.8-flash', timeoutMs: 15000 }
 ];
 
 const MODEL_CASCADE_VISION = [
-    { name: 'gemini-3.1-flash-lite', timeoutMs: 18000 },
-    { name: 'gemini-2.5-flash-lite', timeoutMs: 18000 },
+    { name: 'gemini-3-flash-preview', timeoutMs: 18000 },
+    { name: 'gemini-3.5-flash', timeoutMs: 18000 },
+    { name: 'gemini-3.5-flash-lite', timeoutMs: 18000 },
     { name: 'gemini-3.8-flash', timeoutMs: 20000 }
 ];
 
@@ -52,16 +53,23 @@ const GeminiEngine = {
     },
 
     extractCleanJson(rawText) {
-        const cleaned = String(rawText || '')
+        const text = String(rawText || '').trim();
+        const cleaned = text
             .replace(/^```json\s*/i, '')
             .replace(/^```\s*/i, '')
             .replace(/```\s*$/i, '')
             .trim();
+
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+        }
         return JSON.parse(cleaned);
     },
 
     // =========================================================================
-    // 1. ANALIZA PRZYCZYNOWA 5-WHY (Kaskada Lite/Flash/Gemma + Warunki Brzegowe)
+    // 1. ANALIZA PRZYCZYNOWA 5-WHY (gemini-3.5-flash-lite + Kaskada Failover)
     // =========================================================================
     async analyzeIncident(incident, humanNote = '') {
         const safeIncident = this.sanitizeIncidentInput(incident);
@@ -84,7 +92,7 @@ const GeminiEngine = {
                 }
                 console.warn(`[5-Why Failover ${i + 1}/${MODEL_CASCADE_5WHY.length}] Węzeł ${node.name} niedostępny (${err.message}) – przełączam na kolejny...`);
                 if (i < MODEL_CASCADE_5WHY.length - 1) {
-                    await this.sleep(300);
+                    await this.sleep(250);
                 }
             }
         }
@@ -110,7 +118,6 @@ const GeminiEngine = {
     async fetchGemini5Why(modelName, timeoutMs, incident, humanNote) {
         const apiKey = this.getApiKey();
         const url = `${this.getEndpoint(modelName)}?key=${encodeURIComponent(apiKey)}`;
-        const isGemma = modelName.toLowerCase().includes('gemma');
 
         const prompt = `Jesteś Głównym Inżynierem Lean Manufacturing i Audytorem IATF 16949 w zakładzie konstrukcji stalowych.
 Przeprowadź rygorystyczną analizę przyczyn źródłowych metodą 5-Why dla poniższego przestoju produkcyjnego.
@@ -126,28 +133,16 @@ DANE ZDARZENIA:
 WYMAGANIA:
 1. Każde kolejne "Dlaczego" (w1 -> w5) musi wynikać logicznie z poprzedniego i schodzić od objawu mechanicznego/procesowego do systemowej przyczyny źródłowej (brak standardu, brak Poka-Yoke, luka w TPM/SMED).
 2. Działanie korygujące (capa) musi być konkretne, techniczne i nie może naruszać zasad BHP (zakaz omijania czujników i kurtyn).
-3. Zwróć WYŁĄCZNIE czysty obiekt JSON bez znaczników markdown o dokładnie tych kluczach:
-{"w1": "...", "w2": "...", "w3": "...", "w4": "...", "w5": "...", "capa": "...", "owner": "..."}`;
-
-        const generationConfig = isGemma
-            ? { temperature: 0.25 }
-            : {
-                temperature: 0.25,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: "OBJECT",
-                    properties: {
-                        w1: { type: "STRING" },
-                        w2: { type: "STRING" },
-                        w3: { type: "STRING" },
-                        w4: { type: "STRING" },
-                        w5: { type: "STRING" },
-                        capa: { type: "STRING" },
-                        owner: { type: "STRING" }
-                    },
-                    required: ["w1", "w2", "w3", "w4", "w5", "capa", "owner"]
-                }
-            };
+3. Zwróć WYŁĄCZNIE surowy obiekt JSON (bez tekstu przed ani po, bez znaczników markdown) o dokładnie tych kluczach:
+{
+  "w1": "1. Dlaczego (objaw bezpośredni)",
+  "w2": "2. Dlaczego (przyczyna fizyczna)",
+  "w3": "3. Dlaczego (stan pośredni)",
+  "w4": "4. Dlaczego (luka procesowa)",
+  "w5": "Przyczyna Źródłowa: ...",
+  "capa": "Konkretne działanie techniczne / Poka-Yoke",
+  "owner": "Dział odpowiedzialny (np. Utrzymanie Ruchu / Technologia / Logistyka)"
+}`;
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(new Error(`Timeout ${timeoutMs / 1000}s`)), timeoutMs);
@@ -159,7 +154,9 @@ WYMAGANIA:
                 signal: controller.signal,
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig
+                    generationConfig: {
+                        temperature: 0.25
+                    }
                 })
             });
 
@@ -200,7 +197,7 @@ WYMAGANIA:
     },
 
     // =========================================================================
-    // 2. AUDYT WIZYJNY 5S VISION (Kaskada Lite/Flash + Poka-Yoke optyczny)
+    // 2. AUDYT WIZYJNY 5S VISION (gemini-3-flash-preview + Kaskada + Poka-Yoke)
     // =========================================================================
     async analyzeVisual5S(imageBase64, station, auditorNotes = '') {
         const safeStation = {
@@ -269,7 +266,7 @@ WYMAGANIA:
                 }
                 console.warn(`[5S Vision Failover ${i + 1}/${MODEL_CASCADE_VISION.length}] Węzeł ${node.name} niedostępny (${err.message}) – przełączam na kolejny...`);
                 if (i < MODEL_CASCADE_VISION.length - 1) {
-                    await this.sleep(300);
+                    await this.sleep(250);
                 }
             }
         }
@@ -299,7 +296,18 @@ ZASADY OCENIANIA (SKALA 1.00 - 5.00):
 - W tablicy "observations" wymień 3 do 5 KONKRETNYCH rzeczy, które faktycznie widzisz na tym zdjęciu (wskaż dokładne miejsce na obrazie, np. "Po lewej stronie stołu leży luzem klucz...", "Na podłodze pod regałem zalegają...").
 - Jeśli widzisz pozytywny element (np. czysta posadzka, opisane pojemniki), dodaj go z prefiksem "+ Wzorcowo" w polu "pen". Dla niezgodności wpisz ujemną karę punktową (np. "-0.65 pkt (2S)" lub "-0.90 pkt (BHP/3S)").
 
-Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
+Zwróć WYŁĄCZNIE surowy obiekt JSON (bez znaczników markdown) o dokładnie tych kluczach:
+{
+  "s1": 2.5,
+  "s2": 2.0,
+  "s3": 2.8,
+  "s4": 2.2,
+  "s5": 3.0,
+  "observations": [
+    { "text": "Konkretna obserwacja na zdjęciu...", "pen": "-0.70 pkt (2S)" }
+  ],
+  "capa": "Konkretne działanie naprawcze 5S / BHP"
+}`;
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(new Error(`Timeout ${timeoutMs / 1000}s`)), timeoutMs);
@@ -317,31 +325,7 @@ Zwróć WYŁĄCZNIE czysty obiekt JSON zgodny ze schematem.`;
                         ]
                     }],
                     generationConfig: {
-                        temperature: 0.2,
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                s1: { type: "NUMBER" },
-                                s2: { type: "NUMBER" },
-                                s3: { type: "NUMBER" },
-                                s4: { type: "NUMBER" },
-                                s5: { type: "NUMBER" },
-                                observations: {
-                                    type: "ARRAY",
-                                    items: {
-                                        type: "OBJECT",
-                                        properties: {
-                                            text: { type: "STRING" },
-                                            pen: { type: "STRING" }
-                                        },
-                                        required: ["text", "pen"]
-                                    }
-                                },
-                                capa: { type: "STRING" }
-                            },
-                            required: ["s1", "s2", "s3", "s4", "s5", "observations", "capa"]
-                        }
+                        temperature: 0.2
                     }
                 })
             });
