@@ -1,23 +1,24 @@
 /**
- * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.3)
- * - Kaskada modeli chmurowych: gemini-3.8-flash -> gemini-2.5-flash -> gemini-flash-latest
- * - Budżet czasu per węzeł (9s / 14s / 14s) + rozróżnienie błędów 400 (klucz) vs 503/429 (ruch)
- * - Twarde warunki brzegowe (Poka-Yoke) na dane wejściowe, jasność/ostrość kadrów 5S oraz strukturę JSON
- * - Pełny deterministyczny silnik awaryjny Edge Offline (reguły TPM / SMED / BHP)
+ * Proton Lean OS - Silnik Wnioskowania AI Multi-Model Failover (v4.5)
+ * - Kaskada modeli zweryfikowanych na koncie: gemini-4-argon -> gemini-4-carbon -> gemini-3.8-flash -> gemini-3.7-flash
+ * - Obsługa tekstu (5-Why JSON) oraz analizy wizyjnej (5S Vision 1280px)
+ * - Twarde warunki brzegowe (Poka-Yoke) + deterministyczny silnik Edge Offline
  */
 
 const STORAGE_KEY_GEMINI = 'proton_gemini_api_key';
 
 const MODEL_CASCADE_5WHY = [
-    { name: 'gemini-3.8-flash', timeoutMs: 9000 },
-    { name: 'gemini-2.5-flash', timeoutMs: 14000 },
-    { name: 'gemini-flash-latest', timeoutMs: 14000 }
+    { name: 'gemini-4-argon', timeoutMs: 11000 },
+    { name: 'gemini-4-carbon', timeoutMs: 12000 },
+    { name: 'gemini-3.8-flash', timeoutMs: 12000 },
+    { name: 'gemini-3.7-flash', timeoutMs: 12000 }
 ];
 
 const MODEL_CASCADE_VISION = [
-    { name: 'gemini-3.8-flash', timeoutMs: 14000 },
-    { name: 'gemini-2.5-flash', timeoutMs: 20000 },
-    { name: 'gemini-flash-latest', timeoutMs: 20000 }
+    { name: 'gemini-4-argon', timeoutMs: 16000 },
+    { name: 'gemini-4-carbon', timeoutMs: 18000 },
+    { name: 'gemini-3.8-flash', timeoutMs: 18000 },
+    { name: 'gemini-3.7-flash', timeoutMs: 18000 }
 ];
 
 const GeminiEngine = {
@@ -48,10 +49,9 @@ const GeminiEngine = {
     },
 
     // =========================================================================
-    // 1. ANALIZA PRZYCZYNOWA 5-WHY (Kaskada modeli + Warunki Brzegowe)
+    // 1. ANALIZA PRZYCZYNOWA 5-WHY (gemini-4-argon + Kaskada Failover)
     // =========================================================================
     async analyzeIncident(incident, humanNote = '') {
-        // Warunek brzegowy 1: Walidacja i normalizacja danych wejściowych incydentu
         const safeIncident = this.sanitizeIncidentInput(incident);
         const safeNote = String(humanNote || '').trim().slice(0, 600);
 
@@ -63,23 +63,21 @@ const GeminiEngine = {
         for (let i = 0; i < MODEL_CASCADE_5WHY.length; i++) {
             const node = MODEL_CASCADE_5WHY[i];
             try {
-                const result = await this.fetchGemini5Why(node.name, node.timeoutMs, safeIncident, safeNote);
-                return result;
+                return await this.fetchGemini5Why(node.name, node.timeoutMs, safeIncident, safeNote);
             } catch (err) {
                 lastError = err;
-                // Warunek brzegowy 2: Błąd autoryzacji klucza (400/401/403) przerywa kaskadę natychmiast
                 if (err.isAuthError) {
-                    console.error('[5-Why Auth Error - nieprawidłowy klucz API, przerywam kaskadę]:', err.message);
+                    console.error('[5-Why Auth Error - nieprawidłowy klucz API]:', err.message);
                     break;
                 }
-                console.warn(`[5-Why Failover ${i + 1}/${MODEL_CASCADE_5WHY.length}] Węzeł ${node.name} zajęty (${err.message}) – przełączam na kolejny...`);
+                console.warn(`[5-Why Failover ${i + 1}/${MODEL_CASCADE_5WHY.length}] Węzeł ${node.name} niedostępny (${err.message}) – przełączam na kolejny...`);
                 if (i < MODEL_CASCADE_5WHY.length - 1) {
-                    await this.sleep(350);
+                    await this.sleep(300);
                 }
             }
         }
 
-        console.error('[5-Why Cloud Error - wszystkie węzły chmury niedostępne, uruchamiam Edge Fallback]:', lastError);
+        console.error('[5-Why Cloud Error - wszystkie węzły chmury zajęte, uruchamiam Edge Fallback]:', lastError);
         return this.runLocalEdgeInference(safeIncident, safeNote, true);
     },
 
@@ -163,11 +161,8 @@ WYMAGANIA:
             if (!rawText) throw new Error('Pusta odpowiedź z modelu Gemini 5-Why');
 
             const parsed = JSON.parse(rawText);
-
-            // Warunek brzegowy 3: Weryfikacja kompletności łańcucha 5-Why z odpowiedzi AI
             const requiredKeys = ['w1', 'w2', 'w3', 'w4', 'w5', 'capa'];
-            const isComplete = requiredKeys.every(k => typeof parsed[k] === 'string' && parsed[k].trim().length >= 8);
-            if (!isComplete) {
+            if (!requiredKeys.every(k => typeof parsed[k] === 'string' && parsed[k].trim().length >= 8)) {
                 throw new Error('Niekompletna struktura 5-Why zwrócona przez model');
             }
 
@@ -187,7 +182,7 @@ WYMAGANIA:
     },
 
     // =========================================================================
-    // 2. AUDYT WIZYJNY 5S VISION (Kaskada modeli + Skan Siatkowy + Poka-Yoke)
+    // 2. AUDYT WIZYJNY 5S VISION (gemini-4-argon + Kaskada + Poka-Yoke)
     // =========================================================================
     async analyzeVisual5S(imageBase64, station, auditorNotes = '') {
         const safeStation = {
@@ -203,7 +198,6 @@ WYMAGANIA:
 
         const prepared = await this.prepareImageForVision(imageBase64);
 
-        // Warunki brzegowe jakości obrazu (Poka-Yoke optyczny)
         if (prepared.isCorrupted) {
             return {
                 score: "1.00",
@@ -255,14 +249,14 @@ WYMAGANIA:
                     console.error('[5S Vision Auth Error - nieprawidłowy klucz API]:', err.message);
                     break;
                 }
-                console.warn(`[5S Vision Failover ${i + 1}/${MODEL_CASCADE_VISION.length}] Węzeł ${node.name} zajęty (${err.message}) – przełączam na kolejny...`);
+                console.warn(`[5S Vision Failover ${i + 1}/${MODEL_CASCADE_VISION.length}] Węzeł ${node.name} niedostępny (${err.message}) – przełączam na kolejny...`);
                 if (i < MODEL_CASCADE_VISION.length - 1) {
-                    await this.sleep(350);
+                    await this.sleep(300);
                 }
             }
         }
 
-        console.error('[5S Vision Cloud Error - wszystkie węzły chmury niedostępne, uruchamiam Edge Fallback]:', lastError);
+        console.error('[5S Vision Cloud Error - wszystkie węzły chmury zajęte, uruchamiam Edge Fallback]:', lastError);
         return this.runLocalVisionFallback(safeStation, safeNotes, 'Edge Fallback (Przeciążenie serwerów API)');
     },
 
